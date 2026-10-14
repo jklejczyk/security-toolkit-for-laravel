@@ -18,9 +18,17 @@ arch('core does not depend on modules, console or reporting')
         'Jklejczyk\SecurityToolkit\Reporting',
     ]);
 
-arch('scanners do not depend on console or reporting')
+arch('scanners do not depend on console, reporting or the service provider')
     ->expect('Jklejczyk\SecurityToolkit\Scanners')
     ->not->toUse([
         'Jklejczyk\SecurityToolkit\Console',
         'Jklejczyk\SecurityToolkit\Reporting',
+        'Jklejczyk\SecurityToolkit\SecurityToolkitServiceProvider',
+    ]);
+
+arch('reporting does not depend on console or modules')
+    ->expect('Jklejczyk\SecurityToolkit\Reporting')
+    ->not->toUse([
+        'Jklejczyk\SecurityToolkit\Console',
+        'Jklejczyk\SecurityToolkit\Scanners',
     ]);
