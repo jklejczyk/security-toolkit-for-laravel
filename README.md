@@ -1,8 +1,5 @@
 # Security Toolkit for Laravel
 
-[![tests](https://github.com/jklejczyk/security-toolkit-for-laravel/actions/workflows/tests.yml/badge.svg)](https://github.com/jklejczyk/security-toolkit-for-laravel/actions/workflows/tests.yml)
-[![static analysis](https://github.com/jklejczyk/security-toolkit-for-laravel/actions/workflows/static-analysis.yml/badge.svg)](https://github.com/jklejczyk/security-toolkit-for-laravel/actions/workflows/static-analysis.yml)
-
 > **Work in progress.** Not ready for use yet.
 
 An open source security audit and hardening toolkit for Laravel 12 and 13.
