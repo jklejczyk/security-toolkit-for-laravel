@@ -1,0 +1,13 @@
+* text=auto eol=lf
+
+# Files below are not shipped to users via `composer require`.
+/.github            export-ignore
+/docs               export-ignore
+/tests              export-ignore
+/.editorconfig      export-ignore
+/.gitattributes     export-ignore
+/.gitignore         export-ignore
+/phpstan.neon.dist  export-ignore
+/phpunit.xml.dist   export-ignore
+/pint.json          export-ignore
+/CHANGELOG.md       export-ignore

@@ -1,0 +1,69 @@
+{
+    "name": "jklejczyk/security-toolkit-for-laravel",
+    "description": "Security audit and hardening toolkit for Laravel applications: configuration review, static analysis and authorization probes in one command.",
+    "keywords": [
+        "laravel",
+        "security",
+        "appsec",
+        "audit",
+        "sast",
+        "dast"
+    ],
+    "homepage": "https://github.com/jklejczyk/security-toolkit-for-laravel",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Jakub Klejczyk",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": "^8.3",
+        "illuminate/console": "^12.0 || ^13.0",
+        "illuminate/contracts": "^12.0 || ^13.0",
+        "illuminate/support": "^12.0 || ^13.0"
+    },
+    "require-dev": {
+        "larastan/larastan": "^3.0",
+        "laravel/pint": "^1.20",
+        "orchestra/testbench": "^10.0 || ^11.0",
+        "pestphp/pest": "^4.0",
+        "pestphp/pest-plugin-laravel": "^4.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Jklejczyk\\SecurityToolkit\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Jklejczyk\\SecurityToolkit\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/pest",
+        "analyse": "vendor/bin/phpstan analyse --memory-limit=1G",
+        "format": "vendor/bin/pint",
+        "lint": "vendor/bin/pint --test",
+        "check": [
+            "@lint",
+            "@analyse",
+            "@test"
+        ]
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Jklejczyk\\SecurityToolkit\\SecurityToolkitServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
