@@ -18,7 +18,9 @@ it('reports debug mode', function (mixed $value) {
 
     expect($findings)->toHaveCount(1)
         ->and($findings[0]->ruleId)->toBe('config.debug-enabled')
-        ->and($findings[0]->severity)->toBe(Severity::Critical)
+        ->and($findings[0]->severity)->toBe(Severity::High)
+        ->and($findings[0]->cwe)->toBe([209])
+        ->and($findings[0]->cvss?->vector)->toBe('CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N')
         ->and($findings[0]->location?->file)->toBe('config/app.php');
 })->with([true, 'true', '1', 1, 'false', 'off']);
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Jklejczyk\SecurityToolkit\Reporting;
 
+use Jklejczyk\SecurityToolkit\Core\Findings\Cvss;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
 use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
 use Jklejczyk\SecurityToolkit\Core\ScannerFailure;
@@ -32,6 +33,13 @@ final class JsonReporter implements Reporter
                 'description' => $finding->description,
                 'remediation' => $finding->remediation,
                 'references' => $finding->references,
+                'cwe' => array_map(fn (int $cwe): string => 'CWE-'.$cwe, $finding->cwe),
+                'cvss' => $finding->cvss === null ? null : [
+                    'version' => Cvss::VERSION,
+                    'vector' => $finding->cvss->vector,
+                    'score' => $finding->cvss->score,
+                ],
+                'cve' => $finding->cve,
                 'location' => $finding->location === null ? null : [
                     'file' => $finding->location->file,
                     'line' => $finding->location->line,

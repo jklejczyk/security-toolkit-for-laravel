@@ -43,3 +43,14 @@ it('reports whether any scanner failed', function () {
     expect((new ScanReport)->hasErrors())->toBeFalse()
         ->and((new ScanReport(errors: [new ScannerFailure('x', 'boom')]))->hasErrors())->toBeTrue();
 });
+
+it('sorts unrated findings last but keeps them above every threshold', function () {
+    $report = new ScanReport([
+        reportFinding('a.unknown', Severity::Unknown),
+        reportFinding('b.info', Severity::Info),
+    ]);
+
+    expect(array_map(fn (Finding $finding) => $finding->ruleId, $report->findings))->toBe(['b.info', 'a.unknown'])
+        ->and($report->findingsAtLeast(Severity::Critical))->toHaveCount(1)
+        ->and($report->count(Severity::Unknown))->toBe(1);
+});

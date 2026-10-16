@@ -7,7 +7,10 @@ namespace Jklejczyk\SecurityToolkit;
 use Illuminate\Support\ServiceProvider;
 use Jklejczyk\SecurityToolkit\Console\ScanCommand;
 use Jklejczyk\SecurityToolkit\Core\ScannerRegistry;
+use Jklejczyk\SecurityToolkit\Scanners\Auth\AuthScanner;
 use Jklejczyk\SecurityToolkit\Scanners\Config\ConfigScanner;
+use Jklejczyk\SecurityToolkit\Scanners\Dependencies\DependenciesScanner;
+use Jklejczyk\SecurityToolkit\Scanners\Files\FilesScanner;
 
 final class SecurityToolkitServiceProvider extends ServiceProvider
 {
@@ -18,7 +21,11 @@ final class SecurityToolkitServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        $this->app->make(ScannerRegistry::class)->register(ConfigScanner::class);
+        $registry = $this->app->make(ScannerRegistry::class);
+        $registry->register(ConfigScanner::class);
+        $registry->register(FilesScanner::class);
+        $registry->register(AuthScanner::class);
+        $registry->register(DependenciesScanner::class);
 
         if ($this->app->runningInConsole()) {
             $this->commands([ScanCommand::class]);

@@ -26,6 +26,8 @@ it('reports a key from the bundled list', function () {
 
     expect($findings)->toHaveCount(1)
         ->and($findings[0]->severity)->toBe(Severity::Critical)
+        ->and($findings[0]->cwe)->toBe([321])
+        ->and($findings[0]->cvss?->vector)->toBe('CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N')
         ->and($findings[0]->description)->toContain('Laravel 5.0 .env.example');
 });
 

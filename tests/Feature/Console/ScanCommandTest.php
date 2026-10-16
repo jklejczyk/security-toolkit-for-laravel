@@ -92,6 +92,8 @@ it('rejects invalid option values', function (string $option, string $value) {
     ['--format', 'xml'],
     ['--min-severity', 'urgent'],
     ['--fail-on', 'HIGH'],
+    ['--min-severity', 'unknown'],
+    ['--fail-on', 'unknown'],
 ]);
 
 it('returns code 2 when a scanner fails, even with findings, and still reports the rest', function () {

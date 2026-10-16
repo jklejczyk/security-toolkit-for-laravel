@@ -9,19 +9,19 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Gate;
 use Jklejczyk\SecurityToolkit\Core\Checks\Check;
 use Jklejczyk\SecurityToolkit\Core\Checks\CheckSkipped;
+use Jklejczyk\SecurityToolkit\Core\Findings\Cvss;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
 use Jklejczyk\SecurityToolkit\Core\Findings\Location;
-use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
 use Jklejczyk\SecurityToolkit\Core\ScanContext;
-use ReflectionFunction;
 use Throwable;
 
 final class DashboardOpenCheck implements Check
 {
     /**
-     * Composer package => [dashboard name, gate ability, what the dashboard exposes, documentation URL, config key that switches the dashboard off].
+     * Composer package => [dashboard name, gate ability, what the dashboard exposes, documentation URL,
+     * config key that switches the dashboard off, CVSS vector for a logged-in user who should not get in].
      *
-     * @var array<string, array{string, string, string, string, string|null}>
+     * @var array<string, array{string, string, string, string, string|null, string}>
      */
     private const DASHBOARDS = [
         'laravel/telescope' => [
@@ -30,6 +30,7 @@ final class DashboardOpenCheck implements Check
             'In production Telescope records exceptions, failed requests, failed jobs and scheduled tasks with their payloads and context (passwords, cookies and the Authorization header are hidden by default), and its Monitoring page lets anyone start recording every request of a chosen user by tag.',
             'https://laravel.com/docs/telescope#dashboard-authorization',
             'telescope.enabled',
+            'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:L/A:L',
         ],
         'laravel/horizon' => [
             'Horizon',
@@ -37,6 +38,7 @@ final class DashboardOpenCheck implements Check
             'Horizon shows the data of pending, completed and failed jobs, which often includes personal data and tokens, and lets the user retry failed jobs.',
             'https://laravel.com/docs/horizon#dashboard-authorization',
             null,
+            'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:L/A:N',
         ],
         'laravel/pulse' => [
             'Pulse',
@@ -44,6 +46,7 @@ final class DashboardOpenCheck implements Check
             'Pulse shows the most active users with their names and email addresses, slow requests and queries, and exceptions, revealing user identities and internals of the application.',
             'https://laravel.com/docs/pulse#dashboard-authorization',
             null,
+            'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N',
         ],
         'opcodesio/log-viewer' => [
             'Log Viewer',
@@ -51,6 +54,7 @@ final class DashboardOpenCheck implements Check
             'Log Viewer lets the user read and download the application logs, which often contain personal data, tokens and exception details, and by default also delete them, which can hide traces of an attack.',
             'https://github.com/opcodesio/log-viewer',
             'log-viewer.enabled',
+            'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:L/A:L',
         ],
     ];
 
@@ -68,7 +72,7 @@ final class DashboardOpenCheck implements Check
     {
         $failures = [];
 
-        foreach (self::DASHBOARDS as $package => [$dashboard, $ability, $exposure, $documentation, $enabledKey]) {
+        foreach (self::DASHBOARDS as $package => [$dashboard, $ability, $exposure, $documentation, $enabledKey, $vector]) {
             if (! $context->packages->isInstalled($package) || ! Gate::has($ability)) {
                 continue;
             }
@@ -89,7 +93,7 @@ final class DashboardOpenCheck implements Check
             }
 
             if ($allowed) {
-                yield $this->finding($dashboard, $ability, $exposure, $documentation, $context);
+                yield $this->finding($dashboard, $ability, $exposure, $documentation, $vector, $context);
             }
         }
 
@@ -124,16 +128,20 @@ final class DashboardOpenCheck implements Check
         return $user;
     }
 
-    private function finding(string $dashboard, string $ability, string $exposure, string $documentation, ScanContext $context): Finding
+    private function finding(string $dashboard, string $ability, string $exposure, string $documentation, string $vector, ScanContext $context): Finding
     {
+        $cvss = Cvss::fromVector($vector);
+
         return new Finding(
             $this->id(),
-            Severity::High,
+            $cvss->severity(),
             sprintf('%s dashboard is open to every logged-in user', $dashboard),
             sprintf('The %s gate allows any logged-in user, so every account holder can open the %s dashboard. %s', $ability, $dashboard, $exposure),
             sprintf('Allow only specific users in the %s gate, for example by email or role, or do not run %s in production.', $ability, $dashboard),
             [$documentation],
             $this->gateLocation($ability, $context),
+            cwe: [862],
+            cvss: $cvss,
         );
     }
 
@@ -141,22 +149,6 @@ final class DashboardOpenCheck implements Check
     {
         $callback = Gate::abilities()[$ability] ?? null;
 
-        if (! $callback instanceof Closure) {
-            return null;
-        }
-
-        $reflection = new ReflectionFunction($callback);
-        $file = $reflection->getFileName();
-
-        if ($file === false) {
-            return null;
-        }
-
-        $prefix = rtrim($context->basePath, '/').'/';
-
-        return new Location(
-            str_starts_with($file, $prefix) ? substr($file, strlen($prefix)) : $file,
-            $reflection->getStartLine() ?: null,
-        );
+        return $callback instanceof Closure ? Location::ofClosure($callback, $context->basePath) : null;
     }
 }

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Jklejczyk\SecurityToolkit\Core\Findings\Cvss;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
 use Jklejczyk\SecurityToolkit\Core\Findings\Location;
 use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
@@ -39,12 +40,15 @@ it('renders the whole report as a single JSON document', function () {
             'description' => 'Desc',
             'remediation' => 'Fix',
             'references' => ['https://example.com'],
+            'cwe' => [],
+            'cvss' => null,
+            'cve' => [],
             'location' => ['file' => 'app/A.php', 'line' => 3],
         ]],
         'skipped' => [['check' => 'a.prod', 'reason' => 'reason']],
         'unavailable' => [['scanner' => 'zap', 'reason' => 'needs Docker']],
         'errors' => [['scanner' => 'broken', 'message' => 'boom']],
-        'summary' => ['critical' => 0, 'high' => 1, 'medium' => 0, 'low' => 0, 'info' => 0, 'hidden' => 0],
+        'summary' => ['critical' => 0, 'high' => 1, 'medium' => 0, 'low' => 0, 'info' => 0, 'unknown' => 0, 'hidden' => 0],
     ]);
 });
 
@@ -63,4 +67,27 @@ it('filters findings by minimum severity but keeps full counts', function () {
     expect($json['findings'])->toHaveCount(1)
         ->and($json['summary']['low'])->toBe(1)
         ->and($json['summary']['hidden'])->toBe(1);
+});
+
+it('renders the classification of a finding', function () {
+    $json = renderJson(new ScanReport([
+        new Finding(
+            'a.rule',
+            Severity::High,
+            'T',
+            'D',
+            'R',
+            cwe: [209, 489],
+            cvss: Cvss::fromVector('CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N'),
+            cve: ['CVE-2021-3129'],
+        ),
+    ]));
+
+    expect($json['findings'][0]['cwe'])->toBe(['CWE-209', 'CWE-489'])
+        ->and($json['findings'][0]['cvss'])->toBe([
+            'version' => '3.1',
+            'vector' => 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N',
+            'score' => 7.5,
+        ])
+        ->and($json['findings'][0]['cve'])->toBe(['CVE-2021-3129']);
 });

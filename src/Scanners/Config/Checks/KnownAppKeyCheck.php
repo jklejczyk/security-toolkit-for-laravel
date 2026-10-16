@@ -6,6 +6,7 @@ namespace Jklejczyk\SecurityToolkit\Scanners\Config\Checks;
 
 use Jklejczyk\SecurityToolkit\Core\Checks\Check;
 use Jklejczyk\SecurityToolkit\Core\Checks\CheckSkipped;
+use Jklejczyk\SecurityToolkit\Core\Findings\Cvss;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
 use Jklejczyk\SecurityToolkit\Core\Findings\Location;
 use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
@@ -56,6 +57,8 @@ final class KnownAppKeyCheck implements Check
                     'https://blog.gitguardian.com/exploiting-public-app_key-leaks/',
                 ],
                 new Location('config/app.php'),
+                cwe: [321],
+                cvss: Cvss::fromVector('CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N'),
             ),
         ];
     }

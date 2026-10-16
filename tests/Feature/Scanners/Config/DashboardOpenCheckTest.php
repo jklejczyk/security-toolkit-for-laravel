@@ -120,3 +120,19 @@ it('skips instead of failing when the user model cannot be instantiated', functi
 
     dashboardFindings(productionContext(['laravel/telescope']));
 })->throws(CheckSkipped::class, 'could not instantiate the user model');
+
+it('rates each dashboard by what it exposes', function (string $package, string $ability, string $vector, Severity $severity) {
+    Gate::define($ability, fn ($user) => true);
+
+    $findings = dashboardFindings(productionContext([$package]));
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->cwe)->toBe([862])
+        ->and($findings[0]->cvss?->vector)->toBe($vector)
+        ->and($findings[0]->severity)->toBe($severity);
+})->with([
+    'Telescope' => ['laravel/telescope', 'viewTelescope', 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:L/A:L', Severity::High],
+    'Horizon' => ['laravel/horizon', 'viewHorizon', 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:L/A:N', Severity::High],
+    'Pulse' => ['laravel/pulse', 'viewPulse', 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N', Severity::Medium],
+    'Log Viewer' => ['opcodesio/log-viewer', 'viewLogViewer', 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:L/A:L', Severity::High],
+]);

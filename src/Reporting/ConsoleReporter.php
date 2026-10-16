@@ -72,6 +72,12 @@ final class ConsoleReporter implements Reporter
             $output->writeln(self::INDENT.$this->escape($location));
         }
 
+        $classification = $this->classification($finding);
+
+        if ($classification !== '') {
+            $output->writeln(self::INDENT.'<fg=gray>'.$this->escape($classification).'</>');
+        }
+
         $output->writeln(self::INDENT.$this->escape($finding->description));
         $output->writeln(self::INDENT.'Fix: '.$this->escape($finding->remediation));
 
@@ -105,6 +111,20 @@ final class ConsoleReporter implements Reporter
         return implode(' · ', $parts);
     }
 
+    /**
+     * "CWE-209 · CVSS 7.5 AV:N/… · CVE-2021-3129", with only the parts the finding has.
+     */
+    private function classification(Finding $finding): string
+    {
+        $parts = array_map(fn (int $cwe): string => 'CWE-'.$cwe, $finding->cwe);
+
+        if ($finding->cvss !== null) {
+            $parts[] = sprintf('CVSS %.1f %s', $finding->cvss->score, $finding->cvss->metrics());
+        }
+
+        return implode(' · ', [...$parts, ...$finding->cve]);
+    }
+
     private function style(Severity $severity): string
     {
         return match ($severity) {
@@ -113,6 +133,7 @@ final class ConsoleReporter implements Reporter
             Severity::Medium => 'fg=yellow',
             Severity::Low => 'fg=cyan',
             Severity::Info => 'fg=gray',
+            Severity::Unknown => 'fg=magenta',
         };
     }
 

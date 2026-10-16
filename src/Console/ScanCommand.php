@@ -34,9 +34,9 @@ final class ScanCommand extends Command
         }
 
         $format = $this->stringOption('format');
-        $minSeverity = Severity::tryFrom($this->stringOption('min-severity'));
+        $minSeverity = $this->threshold('min-severity');
         $failOnOption = $this->stringOption('fail-on');
-        $failOn = Severity::tryFrom($failOnOption);
+        $failOn = $this->threshold('fail-on');
 
         if (! in_array($format, ['console', 'json'], true)) {
             return $this->invalid('The --format option must be "console" or "json".');
@@ -120,9 +120,16 @@ final class ScanCommand extends Command
         return is_string($value) ? $value : '';
     }
 
+    private function threshold(string $name): ?Severity
+    {
+        $severity = Severity::tryFrom($this->stringOption($name));
+
+        return in_array($severity, Severity::thresholds(), true) ? $severity : null;
+    }
+
     private function severities(): string
     {
-        return implode(', ', array_map(fn (Severity $severity): string => $severity->value, Severity::cases()));
+        return implode(', ', array_map(fn (Severity $severity): string => $severity->value, Severity::thresholds()));
     }
 
     private function invalid(string $message): int

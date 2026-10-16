@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Jklejczyk\SecurityToolkit\Core\Findings\Cvss;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
 use Jklejczyk\SecurityToolkit\Core\Findings\Location;
 use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
@@ -98,4 +99,50 @@ it('lists unavailable scanners and errors', function () {
         ->toContain('needs Docker')
         ->toContain('broken')
         ->toContain('boom');
+});
+
+it('shows unrated findings even with the strictest --min-severity', function () {
+    $output = renderConsole(
+        new ScanReport([new Finding('a.rule', Severity::Unknown, 'Unrated advisory', 'D', 'R')]),
+        Severity::Critical,
+    );
+
+    expect($output)->toContain('UNKNOWN', 'Unrated advisory', '0 info, 1 unknown')
+        ->not->toContain('hidden by');
+});
+
+it('prints the classification under the title', function () {
+    $output = renderConsole(new ScanReport([
+        new Finding(
+            'dependencies.vulnerable-package',
+            Severity::High,
+            'T',
+            'D',
+            'R',
+            [],
+            new Location('composer.lock'),
+            cwe: [1395],
+            cvss: Cvss::fromVector('CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N'),
+            cve: ['CVE-2023-24813'],
+        ),
+    ]));
+
+    expect($output)->toMatch('~composer\.lock\n\s+CWE-1395 · CVSS 7\.5 AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N · CVE-2023-24813\n~u');
+});
+
+it('prints only the classification the finding has', function () {
+    $output = renderConsole(new ScanReport([
+        new Finding('a.rule', Severity::Medium, 'T', 'D', 'R', cwe: [1004]),
+    ]));
+
+    expect($output)->toMatch('~\n\s+CWE-1004\n~')
+        ->not->toContain('CVSS');
+});
+
+it('prints no classification line for an unclassified finding', function () {
+    $output = renderConsole(new ScanReport([
+        new Finding('a.rule', Severity::Medium, 'Title', 'Description', 'R'),
+    ]));
+
+    expect($output)->toMatch('~Title  a\.rule\n\s+Description\n~');
 });
