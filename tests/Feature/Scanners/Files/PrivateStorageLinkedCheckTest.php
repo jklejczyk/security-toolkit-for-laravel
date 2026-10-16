@@ -23,9 +23,18 @@ function linkedStorageFindings(string $root): array
     return iterator_to_array((new PrivateStorageLinkedCheck)->run(productionContext(basePath: $root)), false);
 }
 
-it('is a production-only check', function () {
-    expect((new PrivateStorageLinkedCheck)->onlyInProduction())->toBeTrue()
+it('runs in every environment', function () {
+    expect((new PrivateStorageLinkedCheck)->onlyInProduction())->toBeFalse()
         ->and((new PrivateStorageLinkedCheck)->id())->toBe('files.private-storage-linked');
+});
+
+it('reports a configured link outside production too', function () {
+    config(['filesystems.links' => [$this->root.'/public/backups' => $this->root.'/storage/app']]);
+
+    $findings = iterator_to_array((new PrivateStorageLinkedCheck)->run(localContext(basePath: $this->root)), false);
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->ruleId)->toBe('files.private-storage-linked');
 });
 
 it('accepts the default link to the public disk', function () {

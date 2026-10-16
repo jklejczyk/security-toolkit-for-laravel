@@ -12,12 +12,13 @@ it('is registered by the service provider', function () {
     expect($ids)->toContain('files');
 });
 
-it('skips every check outside production', function () {
+it('skips only the checks that read .env values outside production', function () {
     config(['filesystems.default' => 'public']);
 
     $result = (new FilesScanner)->scan(localContext());
 
     expect($result->findings)->toBe([])
         ->and(array_map(fn (SkippedCheck $skipped) => $skipped->checkId, $result->skipped))
-        ->toBe(['files.private-storage-linked', 'files.default-disk-public']);
+        ->toBe(['files.default-disk-public'])
+        ->and($result->skipped[0]->reason)->toContain('only relevant in production');
 });

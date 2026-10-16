@@ -23,13 +23,15 @@ afterEach(function () {
  * @param  list<string>  $packages
  * @return list<Finding>
  */
-function sanctumFindings(string $root, array $packages = ['laravel/sanctum']): array
+function sanctumFindings(string $root, array $packages = ['laravel/sanctum'], bool $production = true): array
 {
-    return iterator_to_array((new SanctumTokensNeverExpireCheck)->run(productionContext($packages, $root)), false);
+    $context = $production ? productionContext($packages, $root) : localContext($packages, $root);
+
+    return iterator_to_array((new SanctumTokensNeverExpireCheck)->run($context), false);
 }
 
-it('is a production-only check', function () {
-    expect((new SanctumTokensNeverExpireCheck)->onlyInProduction())->toBeTrue()
+it('runs in every environment', function () {
+    expect((new SanctumTokensNeverExpireCheck)->onlyInProduction())->toBeFalse()
         ->and((new SanctumTokensNeverExpireCheck)->id())->toBe('auth.sanctum-tokens-never-expire');
 });
 
@@ -114,3 +116,21 @@ it('still reports tokens created without an expiry date', function (string $call
     'call inside an array' => ["['token' => \$user->createToken('x')->plainTextToken, 'user' => \$user]"],
     'comma in a string' => ["\$user->createToken('api, cli', ['read'])"],
 ]);
+
+it('reports tokens that never expire outside production too', function () {
+    issueTokens($this->root);
+    mkdir($this->root.'/config');
+    file_put_contents($this->root.'/config/sanctum.php', "<?php\n\nreturn [\n    'expiration' => null,\n];\n");
+
+    expect(sanctumFindings($this->root, production: false))->toHaveCount(1);
+});
+
+it('skips outside production when the expiration comes from env()', function () {
+    issueTokens($this->root);
+    mkdir($this->root.'/config');
+    file_put_contents($this->root.'/config/sanctum.php', "<?php\n\nreturn [\n    'expiration' => env('SANCTUM_EXPIRATION'),\n];\n");
+
+    expect(fn () => sanctumFindings($this->root, production: false))
+        ->toThrow(CheckSkipped::class, 'sanctum.expiration comes from env()')
+        ->and(sanctumFindings($this->root))->toHaveCount(1);
+});

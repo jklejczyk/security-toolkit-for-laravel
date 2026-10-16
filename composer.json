@@ -1,16 +1,23 @@
 {
     "name": "jklejczyk/security-toolkit-for-laravel",
-    "description": "Security audit and hardening toolkit for Laravel applications: configuration review, static analysis and authorization probes in one command.",
+    "description": "Security audit for Laravel 12 and 13 in one Artisan command: configuration, file storage, authentication and dependency checks with clear recommendations, CWE and CVSS.",
     "keywords": [
         "laravel",
         "security",
         "appsec",
         "audit",
-        "sast",
-        "dast"
+        "vulnerability",
+        "scanner",
+        "cwe",
+        "cvss"
     ],
     "homepage": "https://github.com/jklejczyk/security-toolkit-for-laravel",
     "license": "MIT",
+    "support": {
+        "issues": "https://github.com/jklejczyk/security-toolkit-for-laravel/issues",
+        "source": "https://github.com/jklejczyk/security-toolkit-for-laravel",
+        "security": "https://github.com/jklejczyk/security-toolkit-for-laravel/security/policy"
+    },
     "authors": [
         {
             "name": "Jakub Klejczyk",

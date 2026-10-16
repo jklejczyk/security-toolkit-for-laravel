@@ -28,7 +28,7 @@ final class PasswordTooShortCheck implements Check
 
     public function onlyInProduction(): bool
     {
-        return true;
+        return false;
     }
 
     public function run(ScanContext $context): iterable

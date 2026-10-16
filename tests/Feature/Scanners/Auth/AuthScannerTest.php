@@ -12,18 +12,17 @@ it('is registered by the service provider', function () {
     expect($ids)->toContain('auth');
 });
 
-it('skips every check outside production', function () {
+it('skips only the checks that read .env values outside production', function () {
     config(['session.secure' => null, 'session.http_only' => false]);
 
     $result = (new AuthScanner)->scan(localContext());
 
+    $productionOnly = array_values(array_filter(
+        $result->skipped,
+        fn (SkippedCheck $skipped) => str_contains($skipped->reason, 'only relevant in production'),
+    ));
+
     expect($result->findings)->toBe([])
-        ->and(array_map(fn (SkippedCheck $skipped) => $skipped->checkId, $result->skipped))
-        ->toBe([
-            'auth.session-cookie-insecure',
-            'auth.session-cookie-script-accessible',
-            'auth.password-too-short',
-            'auth.password-not-checked-for-leaks',
-            'auth.sanctum-tokens-never-expire',
-        ]);
+        ->and(array_map(fn (SkippedCheck $skipped) => $skipped->checkId, $productionOnly))
+        ->toBe(['auth.session-cookie-insecure', 'auth.session-cookie-script-accessible']);
 });

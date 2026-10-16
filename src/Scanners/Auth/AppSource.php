@@ -36,6 +36,32 @@ final class AppSource
     }
 
     /**
+     * Every match of the pattern, with the code of its file and its byte offset in it.
+     *
+     * @return list<array{file: string, code: string, offset: int}>
+     *
+     * @throws CheckSkipped
+     */
+    public function matches(string $pattern): array
+    {
+        $found = [];
+
+        $this->any(function (string $code, string $file) use ($pattern, &$found): bool {
+            if (preg_match_all($pattern, $code, $matches, PREG_OFFSET_CAPTURE) === false) {
+                throw CheckSkipped::because(sprintf('could not search %s: %s', $file, preg_last_error_msg()));
+            }
+
+            foreach ($matches[0] as [, $offset]) {
+                $found[] = ['file' => $file, 'code' => $code, 'offset' => $offset];
+            }
+
+            return false;
+        });
+
+        return $found;
+    }
+
+    /**
      * @param  Closure(string, string): bool  $matches  receives the code and the file path relative to the application
      *
      * @throws CheckSkipped

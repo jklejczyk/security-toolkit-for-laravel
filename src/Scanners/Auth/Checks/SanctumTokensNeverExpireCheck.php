@@ -34,13 +34,17 @@ final class SanctumTokensNeverExpireCheck implements Check
 
     public function onlyInProduction(): bool
     {
-        return true;
+        return false;
     }
 
     public function run(ScanContext $context): iterable
     {
         if (! $context->packages->isInstalled('laravel/sanctum') || config('sanctum.expiration') !== null) {
             return [];
+        }
+
+        if (! $context->isProduction() && $this->expirationFromEnv($context)) {
+            throw CheckSkipped::because('sanctum.expiration comes from env(), so the production value is unknown here; run the scan in production');
         }
 
         $model = config('auth.providers.users.model');
@@ -128,5 +132,25 @@ final class SanctumTokensNeverExpireCheck implements Check
         $flat = rtrim(trim($flat), ',');
 
         return substr_count($flat, ',') >= 2 || preg_match('/(?:^|,)\s*expiresAt\s*:/', $flat) === 1;
+    }
+
+    /**
+     * @throws CheckSkipped
+     */
+    private function expirationFromEnv(ScanContext $context): bool
+    {
+        $path = rtrim($context->basePath, '/').'/config/sanctum.php';
+
+        if (! is_file($path)) {
+            return false;
+        }
+
+        $config = is_readable($path) ? file_get_contents($path) : false;
+
+        if ($config === false) {
+            throw CheckSkipped::because('could not read config/sanctum.php');
+        }
+
+        return preg_match('/[\'"]expiration[\'"]\s*=>\s*env\s*\(/', $config) === 1;
     }
 }

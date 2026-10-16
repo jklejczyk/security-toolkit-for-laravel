@@ -15,7 +15,10 @@ interface Check
     public function id(): string;
 
     /**
-     * Production-only checks are skipped, not reported, in other environments.
+     * True when the checked value comes from .env in a default Laravel application
+     * (APP_DEBUG, SESSION_SECURE_COOKIE): locally it differs on purpose, so the check runs
+     * only in production and is skipped, not reported, elsewhere. Values from code and
+     * committed config files are the same everywhere, so those checks return false.
      */
     public function onlyInProduction(): bool;
 

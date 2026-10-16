@@ -30,16 +30,18 @@ function usePasswordRule(string $root, string $code = "return ['password' => ['r
 /**
  * @return list<Finding>
  */
-function passwordFindings(PasswordTooShortCheck|PasswordNotCheckedForLeaksCheck $check, string $root): array
+function passwordFindings(PasswordTooShortCheck|PasswordNotCheckedForLeaksCheck $check, string $root, bool $production = true): array
 {
-    return iterator_to_array($check->run(productionContext(basePath: $root)), false);
+    $context = $production ? productionContext(basePath: $root) : localContext(basePath: $root);
+
+    return iterator_to_array($check->run($context), false);
 }
 
-it('declares production-only rule ids', function () {
+it('declares rule ids that run in every environment', function () {
     expect((new PasswordTooShortCheck)->id())->toBe('auth.password-too-short')
-        ->and((new PasswordTooShortCheck)->onlyInProduction())->toBeTrue()
+        ->and((new PasswordTooShortCheck)->onlyInProduction())->toBeFalse()
         ->and((new PasswordNotCheckedForLeaksCheck)->id())->toBe('auth.password-not-checked-for-leaks')
-        ->and((new PasswordNotCheckedForLeaksCheck)->onlyInProduction())->toBeTrue();
+        ->and((new PasswordNotCheckedForLeaksCheck)->onlyInProduction())->toBeFalse();
 });
 
 it('reports a default rule shorter than 8 characters and points at its definition', function () {
@@ -172,4 +174,128 @@ it('remembers that the default rule could not be evaluated', function () {
 
     expect(fn () => (new PasswordTooShortCheck($defaults))->run($context))->toThrow(CheckSkipped::class, 'database is down')
         ->and(fn () => (new PasswordNotCheckedForLeaksCheck($defaults))->run($context))->toThrow(CheckSkipped::class, 'database is down');
+});
+
+it('evaluates the production branch of the default rule outside production', function () {
+    usePasswordRule($this->root);
+    Password::defaults(fn () => app()->isProduction() ? Password::min(6) : null);
+
+    $findings = passwordFindings(new PasswordTooShortCheck, $this->root, production: false);
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->description)->toContain('6 characters');
+});
+
+it('evaluates the default rule as without debug mode outside production', function () {
+    usePasswordRule($this->root);
+    config(['app.debug' => true]);
+    Password::defaults(fn () => config('app.debug') ? null : Password::min(6));
+
+    expect(passwordFindings(new PasswordTooShortCheck, $this->root, production: false))->toHaveCount(1);
+});
+
+it('restores the environment after evaluating the default rule', function (Closure $callback) {
+    usePasswordRule($this->root);
+    config(['app.debug' => true]);
+    $environment = app()->environment();
+    $configured = config('app.env');
+    Password::defaults($callback);
+
+    try {
+        passwordFindings(new PasswordTooShortCheck, $this->root, production: false);
+    } catch (CheckSkipped) {
+        // A failing callback is skipped; the environment must still be restored.
+    }
+
+    expect(app()->environment())->toBe($environment)
+        ->and(config('app.env'))->toBe($configured)
+        ->and(config('app.debug'))->toBeTrue();
+})->with([
+    'returning a rule' => [fn () => Password::min(6)],
+    'throwing' => [fn () => throw new RuntimeException('database is down')],
+]);
+
+it('evaluates a rule object without a callback in every environment', function () {
+    usePasswordRule($this->root);
+    Password::defaults(Password::min(12));
+
+    expect(passwordFindings(new PasswordNotCheckedForLeaksCheck, $this->root, production: false))->toHaveCount(1);
+});
+
+it('skips outside production when the default rule is registered only in some environments', function () {
+    usePasswordRule($this->root, "if (app()->isProduction()) {\n    Password::defaults(fn () => Password::min(12)->uncompromised());\n}\n\nreturn ['password' => ['required', Password::default()]];");
+    Password::$defaultCallback = null;
+
+    expect(fn () => passwordFindings(new PasswordNotCheckedForLeaksCheck, $this->root, production: false))
+        ->toThrow(CheckSkipped::class, 'registered only in some environments')
+        // In production nothing was registered, so the framework default is the real rule.
+        ->and(passwordFindings(new PasswordNotCheckedForLeaksCheck, $this->root))->toHaveCount(1);
+});
+
+it('skips outside production when the callback reads env() directly', function () {
+    usePasswordRule($this->root);
+    Password::defaults(fn () => env('SECURITY_TOOLKIT_STRONG_PASSWORDS') ? Password::min(12) : Password::min(6));
+
+    expect(fn () => passwordFindings(new PasswordTooShortCheck, $this->root, production: false))
+        ->toThrow(CheckSkipped::class, 'reads env() directly')
+        ->and(passwordFindings(new PasswordTooShortCheck, $this->root))->toHaveCount(1);
+});
+
+it('skips outside production when the default rule is not a closure', function () {
+    usePasswordRule($this->root);
+    Password::defaults(new class
+    {
+        public function __invoke(): Password
+        {
+            return Password::min(6);
+        }
+    });
+
+    expect(fn () => passwordFindings(new PasswordTooShortCheck, $this->root, production: false))
+        ->toThrow(CheckSkipped::class, 'cannot be inspected')
+        ->and(passwordFindings(new PasswordTooShortCheck, $this->root))->toHaveCount(1);
+});
+
+it('skips outside production when the rule object is chosen when the application boots', function () {
+    usePasswordRule($this->root, "Password::defaults(\$this->app->isProduction() ? Password::min(12)->uncompromised() : Password::min(6));\n\nreturn ['password' => ['required', Password::default()]];");
+    Password::defaults(Password::min(6));
+
+    expect(fn () => passwordFindings(new PasswordTooShortCheck, $this->root, production: false))
+        ->toThrow(CheckSkipped::class, 'when the application boots');
+});
+
+it('skips outside production when the callback captures values computed when the application boots', function () {
+    usePasswordRule($this->root);
+    $strict = false;
+    Password::defaults(fn () => $strict ? Password::min(12) : Password::min(6));
+
+    expect(fn () => passwordFindings(new PasswordTooShortCheck, $this->root, production: false))
+        ->toThrow(CheckSkipped::class, 'captures values');
+});
+
+it('skips outside production when the rule is registered in more than one place', function () {
+    usePasswordRule($this->root, "if (\$this->app->isProduction()) {\n    Password::defaults(fn () => Password::min(12)->uncompromised());\n} else {\n    Password::defaults(fn () => Password::min(6));\n}\n\nreturn ['password' => ['required', Password::default()]];");
+    Password::defaults(fn () => Password::min(6));
+
+    expect(fn () => passwordFindings(new PasswordTooShortCheck, $this->root, production: false))
+        ->toThrow(CheckSkipped::class, 'more than one place');
+});
+
+it('skips outside production when the only registration is conditional', function (string $registration) {
+    usePasswordRule($this->root, $registration."\n\nreturn ['password' => ['required', Password::default()]];");
+    Password::defaults(fn () => Password::min(6));
+
+    expect(fn () => passwordFindings(new PasswordTooShortCheck, $this->root, production: false))
+        ->toThrow(CheckSkipped::class, 'only in some environments');
+})->with([
+    'if block' => ["if (\$this->app->isLocal()) {\n    Password::defaults(fn () => Password::min(6));\n}"],
+    'if without braces' => ["if (\$this->app->isLocal())\n    Password::defaults(fn () => Password::min(6));"],
+    'short-circuit' => ['$this->app->isLocal() && Password::defaults(fn () => Password::min(6));'],
+]);
+
+it('evaluates the starter kit registration outside production', function () {
+    usePasswordRule($this->root, "DB::prohibitDestructiveCommands(app()->isProduction());\n\n// Strong passwords in production, or the framework default if it is local.\nPassword::defaults(fn (): ?Password => app()->isProduction() ? Password::min(6) : null);\n\nreturn ['password' => ['required', Password::default()]];");
+    Password::defaults(fn (): ?Password => app()->isProduction() ? Password::min(6) : null);
+
+    expect(passwordFindings(new PasswordTooShortCheck, $this->root, production: false))->toHaveCount(1);
 });
