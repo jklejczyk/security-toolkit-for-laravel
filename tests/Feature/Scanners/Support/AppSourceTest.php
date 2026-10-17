@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\File;
 use Jklejczyk\SecurityToolkit\Core\Checks\CheckSkipped;
-use Jklejczyk\SecurityToolkit\Scanners\Auth\AppSource;
+use Jklejczyk\SecurityToolkit\Scanners\Support\AppSource;
 
 beforeEach(function () {
     $this->root = temporaryApp();

@@ -16,7 +16,7 @@ committed config files run everywhere, including CI.
 | --- | --- | --- | --- | --- | --- |
 | `config.app-key-known` | production | `APP_KEY` is a publicly known key (default keys of open source projects and published examples) | Critical | 321 | 9.1 |
 | `config.debug-enabled` | production | `APP_DEBUG` is on | High | 209 | 7.5 |
-| `config.dashboard-open` | production | Telescope, Horizon, Pulse or Log Viewer gate lets every logged-in user in | High (Pulse: Medium) | 862 | 4.3–7.6 |
+| `config.dashboard-open` | production | Telescope, Horizon, Pulse or Log Viewer gate lets every logged-in user in, or guests too (a nullable user parameter); Log Viewer without a gate when `require_auth_in_production` is `false` | High (Pulse: Medium) | 862 | 4.3–8.6 |
 | `config.app-key-missing` | production | `APP_KEY` is empty, so signed URLs can be forged | Medium | 1391 | 5.3 |
 
 ## `files`
@@ -52,6 +52,19 @@ or reads `env()` directly, or when it is not a closure. Other inputs to the
 callback, such as your own config keys read from `.env`, keep their local
 values too. A Sanctum `expiration` read from `env()` is skipped outside
 production as well.
+
+## `models`
+
+| Rule | Runs in | Detects | Severity | CWE | CVSS |
+| --- | --- | --- | --- | --- | --- |
+| `models.unguarded` | everywhere | `Model::unguard()` is on for every model after the application boots | Medium | 915 | — |
+| `models.guarded-empty` | everywhere | A model in `app/` has an empty `$guarded` (or `#[Unguarded]`) | Medium | 915 | — |
+
+`models.guarded-empty` reports only with evidence that the whole request is
+mass assigned somewhere in `app/`, such as `Post::create($request->all())` or
+`$model->fill(request()->input())`: with `$request->validated()` an empty
+`$guarded` is safe. Pivot models, which are unguarded by default, are not
+reported. When every model is unguarded, only `models.unguarded` is reported.
 
 ## `dependencies`
 

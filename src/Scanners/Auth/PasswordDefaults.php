@@ -9,6 +9,7 @@ use Illuminate\Validation\Rules\Password;
 use Jklejczyk\SecurityToolkit\Core\Checks\CheckSkipped;
 use Jklejczyk\SecurityToolkit\Core\Findings\Location;
 use Jklejczyk\SecurityToolkit\Core\ScanContext;
+use Jklejczyk\SecurityToolkit\Scanners\Support\AppSource;
 use ReflectionFunction;
 use Throwable;
 

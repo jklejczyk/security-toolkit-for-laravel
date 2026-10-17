@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `config.dashboard-open` reports a dashboard whose gate lets guests in (a
+  nullable user parameter, as in the Horizon stub) as open to everyone, rated
+  without required privileges.
+- `config.dashboard-open` reports Log Viewer without a `viewLogViewer` gate or
+  `LogViewer::auth()` callback as open to everyone when
+  `log-viewer.require_auth_in_production` is `false`.
+- `models` module: `models.unguarded` for a global `Model::unguard()` left on
+  after boot, and `models.guarded-empty` for models with an empty `$guarded`
+  (including `#[Unguarded]` on Laravel 13), reported only when code in `app/`
+  passes the whole request to `create()`, `fill()`, `update()` or a similar
+  method.
+
+### Changed
+
+- The console report shows findings of the same rule with the same fix, such
+  as every advisory of one package, as one block: the highest severity, a list
+  of titles with their CVEs, one fix and the references. The JSON report still
+  has one finding per advisory.
+
 ## [0.1.0] - 2026-10-16
 
 First public release.

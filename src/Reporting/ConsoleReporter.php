@@ -18,8 +18,10 @@ final class ConsoleReporter implements Reporter
     {
         $visible = $report->findingsAtLeast($minSeverity);
 
-        foreach ($visible as $finding) {
-            $this->renderFinding($finding, $output);
+        foreach ($this->group($visible) as $group) {
+            count($group) === 1
+                ? $this->renderFinding($group[0], $output)
+                : $this->renderGroup($group, $output);
         }
 
         if ($visible === []) {
@@ -86,6 +88,81 @@ final class ConsoleReporter implements Reporter
         }
 
         $output->writeln('');
+    }
+
+    /**
+     * Findings of the same rule with the same fix, e.g. every advisory of one package, in the
+     * order of their first finding.
+     *
+     * @param  list<Finding>  $findings
+     * @return list<non-empty-list<Finding>>
+     */
+    private function group(array $findings): array
+    {
+        $groups = [];
+
+        foreach ($findings as $finding) {
+            $groups[$finding->ruleId."\0".$finding->remediation][] = $finding;
+        }
+
+        return array_values($groups);
+    }
+
+    /**
+     * @param  non-empty-list<Finding>  $group
+     */
+    private function renderGroup(array $group, OutputInterface $output): void
+    {
+        usort($group, fn (Finding $a, Finding $b): int => $b->severity->rank() <=> $a->severity->rank());
+        $first = $group[0];
+
+        $output->writeln(sprintf(
+            ' <%s> %s </> <options=bold>%s</>  <fg=gray>%s</>',
+            $this->style($first->severity),
+            strtoupper($first->severity->value),
+            $this->escape(sprintf('%d findings: %s', count($group), $this->commonTitle($group))),
+            $this->escape($first->ruleId),
+        ));
+
+        if ($first->location !== null) {
+            $location = $first->location->file.($first->location->line !== null ? ':'.$first->location->line : '');
+            $output->writeln(self::INDENT.$this->escape($location));
+        }
+
+        foreach ($group as $finding) {
+            $output->writeln(self::INDENT.sprintf(
+                '<%s>%s</> %s',
+                $this->style($finding->severity),
+                str_pad(strtoupper($finding->severity->value), 8),
+                $this->escape(implode('  ', [$finding->title, ...$finding->cve])),
+            ));
+        }
+
+        $output->writeln(self::INDENT.'Fix: '.$this->escape($first->remediation));
+
+        foreach (array_unique(array_merge(...array_map(fn (Finding $finding): array => $finding->references, $group))) as $reference) {
+            $output->writeln(self::INDENT.'→ '.$this->escape($reference));
+        }
+
+        $output->writeln('');
+    }
+
+    /**
+     * The part before ": " shared by every title ("dompdf/dompdf: …"), or the first title.
+     *
+     * @param  non-empty-list<Finding>  $group
+     */
+    private function commonTitle(array $group): string
+    {
+        $prefix = strstr($group[0]->title, ': ', true);
+
+        foreach ($group as $finding) {
+            if ($prefix === false || ! str_starts_with($finding->title, $prefix.': ')) {
+                return $group[0]->title;
+            }
+        }
+
+        return $prefix;
     }
 
     private function summary(ScanReport $report, Severity $minSeverity, int $hidden): string

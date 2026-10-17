@@ -11,6 +11,7 @@ use Jklejczyk\SecurityToolkit\Core\InstalledPackages;
 use Jklejczyk\SecurityToolkit\Core\ScanContext;
 use Jklejczyk\SecurityToolkit\Scanners\Config\Checks\DashboardOpenCheck;
 use Jklejczyk\SecurityToolkit\Tests\Fixtures\Models\UserWithRequiredArgument;
+use Opcodes\LogViewer\Facades\LogViewer;
 
 beforeEach(function () {
     config(['auth.providers.users.model' => User::class]);
@@ -136,3 +137,78 @@ it('rates each dashboard by what it exposes', function (string $package, string 
     'Pulse' => ['laravel/pulse', 'viewPulse', 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N', Severity::Medium],
     'Log Viewer' => ['opcodesio/log-viewer', 'viewLogViewer', 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:L/A:L', Severity::High],
 ]);
+
+it('reports a gate that lets guests in as open to everyone', function () {
+    Gate::define('viewHorizon', fn ($user = null) => true);
+
+    $findings = dashboardFindings(productionContext(['laravel/horizon']));
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->title)->toBe('Horizon dashboard is open to everyone')
+        ->and($findings[0]->cvss?->vector)->toBe('CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N')
+        ->and($findings[0]->severity)->toBe(Severity::High)
+        ->and($findings[0]->location?->file)->toEndWith('DashboardOpenCheckTest.php');
+});
+
+it('reports a gate with a required user only as open to logged-in users', function () {
+    Gate::define('viewHorizon', fn ($user) => true);
+
+    expect(dashboardFindings(productionContext(['laravel/horizon']))[0]->title)
+        ->toBe('Horizon dashboard is open to every logged-in user');
+});
+
+it('does not report a nullable gate that refuses guests', function () {
+    Gate::define('viewHorizon', fn ($user = null) => $user !== null && $user->email === 'admin@example.com');
+
+    expect(dashboardFindings(productionContext(['laravel/horizon'])))->toBe([]);
+});
+
+describe('Log Viewer without a gate', function () {
+    beforeEach(function () {
+        require_once dirname(__DIR__, 3).'/Fixtures/LogViewer/LogViewer.php';
+        LogViewer::$hasAuthCallback = false;
+    });
+
+    it('reports it as open to everyone when auth is not required in production', function () {
+        config(['log-viewer.require_auth_in_production' => false]);
+
+        $findings = dashboardFindings(productionContext(['opcodesio/log-viewer']));
+
+        expect($findings)->toHaveCount(1)
+            ->and($findings[0]->title)->toBe('Log Viewer dashboard is open to everyone')
+            ->and($findings[0]->description)->toContain('require_auth_in_production')
+            ->and($findings[0]->cvss?->vector)->toBe('CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:L')
+            ->and($findings[0]->location)->toBeNull();
+    });
+
+    it('treats a missing require_auth_in_production like Log Viewer does, as false', function () {
+        expect(dashboardFindings(productionContext(['opcodesio/log-viewer'])))->toHaveCount(1);
+    });
+
+    it('does not report it when auth is required in production', function () {
+        config(['log-viewer.require_auth_in_production' => true]);
+
+        expect(dashboardFindings(productionContext(['opcodesio/log-viewer'])))->toBe([]);
+    });
+
+    it('does not report it when LogViewer::auth() has a callback', function () {
+        config(['log-viewer.require_auth_in_production' => false]);
+        LogViewer::$hasAuthCallback = true;
+
+        expect(dashboardFindings(productionContext(['opcodesio/log-viewer'])))->toBe([]);
+    });
+
+    it('does not report it when it is switched off', function () {
+        config(['log-viewer.require_auth_in_production' => false, 'log-viewer.enabled' => false]);
+
+        expect(dashboardFindings(productionContext(['opcodesio/log-viewer'])))->toBe([]);
+    });
+});
+
+it('reports a dashboard open to guests even when the user model cannot be resolved', function () {
+    config(['auth.providers.users.model' => 'App\Models\Missing']);
+    Gate::define('viewHorizon', fn ($user = null) => true);
+
+    expect(dashboardFindings(productionContext(['laravel/horizon']))[0]->title)
+        ->toBe('Horizon dashboard is open to everyone');
+});

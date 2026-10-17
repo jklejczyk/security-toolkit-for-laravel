@@ -146,3 +146,68 @@ it('prints no classification line for an unclassified finding', function () {
 
     expect($output)->toMatch('~Title  a\.rule\n\s+Description\n~');
 });
+
+function advisory(Severity $severity, string $title, string $cve, string $package = 'dompdf/dompdf'): Finding
+{
+    return new Finding(
+        'dependencies.vulnerable-package',
+        $severity,
+        $package.': '.$title,
+        'Advisory details.',
+        'Update '.$package.'.',
+        ['https://github.com/advisories/'.$cve, 'https://getcomposer.org/doc/03-cli.md#audit'],
+        new Location('composer.lock'),
+        cve: [$cve],
+    );
+}
+
+it('groups findings of the same rule with the same fix into one block', function () {
+    $output = renderConsole(new ScanReport([
+        advisory(Severity::Medium, 'Medium issue', 'CVE-2023-0001'),
+        advisory(Severity::Critical, 'Critical issue', 'CVE-2023-0002'),
+        advisory(Severity::Unknown, 'Unrated issue', 'CVE-2023-0003'),
+    ]));
+
+    expect($output)
+        ->toContain('CRITICAL  3 findings: dompdf/dompdf')
+        ->and(substr_count($output, 'Fix: Update dompdf/dompdf.'))->toBe(1)
+        ->and(substr_count($output, 'https://getcomposer.org/doc/03-cli.md#audit'))->toBe(1)
+        ->and($output)->toContain('https://github.com/advisories/CVE-2023-0003')
+        ->and($output)->not->toContain('Advisory details.')
+        ->and(strpos($output, 'Critical issue'))->toBeLessThan(strpos($output, 'Medium issue'))
+        ->and(strpos($output, 'Medium issue'))->toBeLessThan(strpos($output, 'Unrated issue'))
+        ->and($output)->toContain('dompdf/dompdf: Critical issue  CVE-2023-0002')
+        ->and($output)->toContain('Summary: 1 critical, 0 high, 1 medium, 0 low, 0 info, 1 unknown');
+});
+
+it('keeps findings with a different fix in separate blocks', function () {
+    $output = renderConsole(new ScanReport([
+        advisory(Severity::High, 'One', 'CVE-2023-0001'),
+        advisory(Severity::High, 'Two', 'CVE-2023-0002', 'guzzlehttp/guzzle'),
+    ]));
+
+    expect($output)
+        ->not->toContain('findings:')
+        ->toContain('Fix: Update dompdf/dompdf.')
+        ->toContain('Fix: Update guzzlehttp/guzzle.');
+});
+
+it('uses the first title when grouped titles share no prefix', function () {
+    $output = renderConsole(new ScanReport([
+        new Finding('a.rule', Severity::Low, 'First problem', 'D', 'Same fix.'),
+        new Finding('a.rule', Severity::Low, 'Second problem', 'D', 'Same fix.'),
+    ]));
+
+    expect($output)->toContain('2 findings: First problem');
+});
+
+it('groups only the findings left visible by the minimum severity', function () {
+    $output = renderConsole(new ScanReport([
+        advisory(Severity::High, 'One', 'CVE-2023-0001'),
+        advisory(Severity::Low, 'Two', 'CVE-2023-0002'),
+    ]), Severity::High);
+
+    expect($output)->not->toContain('findings:')
+        ->toContain('dompdf/dompdf: One')
+        ->not->toContain('dompdf/dompdf: Two');
+});

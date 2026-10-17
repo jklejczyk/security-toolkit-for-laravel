@@ -10,7 +10,7 @@ use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
 use Jklejczyk\SecurityToolkit\Core\Findings\Location;
 use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
 use Jklejczyk\SecurityToolkit\Core\ScanContext;
-use Jklejczyk\SecurityToolkit\Scanners\Auth\AppSource;
+use Jklejczyk\SecurityToolkit\Scanners\Support\AppSource;
 
 final class SanctumTokensNeverExpireCheck implements Check
 {

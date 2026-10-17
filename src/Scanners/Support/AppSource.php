@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Jklejczyk\SecurityToolkit\Scanners\Auth;
+namespace Jklejczyk\SecurityToolkit\Scanners\Support;
 
 use Closure;
 use FilesystemIterator;

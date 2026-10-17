@@ -73,7 +73,7 @@ final class DashboardOpenCheck implements Check
         $failures = [];
 
         foreach (self::DASHBOARDS as $package => [$dashboard, $ability, $exposure, $documentation, $enabledKey, $vector]) {
-            if (! $context->packages->isInstalled($package) || ! Gate::has($ability)) {
+            if (! $context->packages->isInstalled($package)) {
                 continue;
             }
 
@@ -82,10 +82,30 @@ final class DashboardOpenCheck implements Check
                 continue;
             }
 
-            $user = $this->anyUser();
+            if (! Gate::has($ability)) {
+                try {
+                    if ($package === 'opcodesio/log-viewer' && $this->logViewerOpenWithoutGate()) {
+                        yield $this->openToEveryoneWithoutGate($dashboard, $ability, $exposure, $documentation, $vector);
+                    }
+                } catch (CheckSkipped $skipped) {
+                    $failures[] = $skipped->getMessage();
+                }
+
+                continue;
+            }
 
             try {
-                $allowed = Gate::forUser($user)->allows($ability);
+                // The gate only lets guests in when its callback accepts a null user, like the
+                // `function ($user = null)` in the Horizon stub.
+                if (Gate::forUser(null)->allows($ability)) {
+                    yield $this->openToEveryone($dashboard, $ability, $exposure, $documentation, $vector, $context);
+
+                    continue;
+                }
+
+                $allowed = Gate::forUser($this->anyUser())->allows($ability);
+            } catch (CheckSkipped $skipped) {
+                throw $skipped;
             } catch (Throwable $exception) {
                 $failures[] = sprintf('could not evaluate the %s gate: %s', $ability, $exception->getMessage());
 
@@ -143,6 +163,68 @@ final class DashboardOpenCheck implements Check
             cwe: [862],
             cvss: $cvss,
         );
+    }
+
+    private function openToEveryone(string $dashboard, string $ability, string $exposure, string $documentation, string $vector, ScanContext $context): Finding
+    {
+        $cvss = Cvss::fromVector($this->withoutPrivileges($vector));
+
+        return new Finding(
+            $this->id(),
+            $cvss->severity(),
+            sprintf('%s dashboard is open to everyone', $dashboard),
+            sprintf('The %s gate accepts a guest (its user parameter is nullable) and allows them, so anyone who knows the URL can open the %s dashboard without logging in. %s', $ability, $dashboard, $exposure),
+            sprintf('Make the user parameter of the %s gate required and allow only specific users, for example by email or role, or do not run %s in production.', $ability, $dashboard),
+            [$documentation],
+            $this->gateLocation($ability, $context),
+            cwe: [862],
+            cvss: $cvss,
+        );
+    }
+
+    private function openToEveryoneWithoutGate(string $dashboard, string $ability, string $exposure, string $documentation, string $vector): Finding
+    {
+        $cvss = Cvss::fromVector($this->withoutPrivileges($vector));
+
+        return new Finding(
+            $this->id(),
+            $cvss->severity(),
+            sprintf('%s dashboard is open to everyone', $dashboard),
+            sprintf('There is no %s gate and no LogViewer::auth() callback, and log-viewer.require_auth_in_production is false, so anyone who knows the URL can open the %s dashboard without logging in. %s', $ability, $dashboard, $exposure),
+            sprintf('Define the %s gate allowing only specific users, and set log-viewer.require_auth_in_production to true.', $ability),
+            [$documentation],
+            cwe: [862],
+            cvss: $cvss,
+        );
+    }
+
+    /**
+     * Log Viewer refuses to open in production without a gate or an auth callback, unless
+     * require_auth_in_production is false; the default mirrors its AuthorizeLogViewer middleware.
+     */
+    private function logViewerOpenWithoutGate(): bool
+    {
+        if ((bool) config('log-viewer.require_auth_in_production', false)) {
+            return false;
+        }
+
+        $facade = 'Opcodes\LogViewer\Facades\LogViewer';
+        $hasAuthCallback = [$facade, 'hasAuthCallback'];
+
+        if (! class_exists($facade) || ! is_callable($hasAuthCallback)) {
+            throw CheckSkipped::because('could not check whether Log Viewer has an auth callback');
+        }
+
+        return ! (bool) call_user_func($hasAuthCallback);
+    }
+
+    /**
+     * The same attack without an account: the vector of a dashboard open to every logged-in user
+     * with no privileges required.
+     */
+    private function withoutPrivileges(string $vector): string
+    {
+        return str_replace('/PR:L/', '/PR:N/', $vector);
     }
 
     private function gateLocation(string $ability, ScanContext $context): ?Location
