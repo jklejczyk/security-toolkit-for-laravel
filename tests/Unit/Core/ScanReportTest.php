@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use Jklejczyk\SecurityToolkit\Core\Findings\Confidence;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
+use Jklejczyk\SecurityToolkit\Core\Findings\Location;
 use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
 use Jklejczyk\SecurityToolkit\Core\ScannerFailure;
 use Jklejczyk\SecurityToolkit\Core\ScanReport;
@@ -53,4 +55,62 @@ it('sorts unrated findings last but keeps them above every threshold', function 
     expect(array_map(fn (Finding $finding) => $finding->ruleId, $report->findings))->toBe(['b.info', 'a.unknown'])
         ->and($report->findingsAtLeast(Severity::Critical))->toHaveCount(1)
         ->and($report->count(Severity::Unknown))->toBe(1);
+});
+
+function locatedFinding(string $ruleId, Confidence $confidence, ?Location $location = new Location('app/A.php', 10)): Finding
+{
+    return new Finding($ruleId, Severity::Medium, 'Title', $confidence->value, 'Remediation', [], $location, confidence: $confidence);
+}
+
+it('replaces a suspicion with the confirmed finding of the same rule and location', function () {
+    $report = new ScanReport([
+        locatedFinding('routes.missing-authorization', Confidence::Suspected),
+        locatedFinding('routes.missing-authorization', Confidence::Confirmed),
+    ]);
+
+    expect($report->findings)->toHaveCount(1)
+        ->and($report->findings[0]->confidence)->toBe(Confidence::Confirmed);
+});
+
+it('keeps suspicions of another rule or at another location', function () {
+    $report = new ScanReport([
+        locatedFinding('routes.missing-authorization', Confidence::Confirmed),
+        locatedFinding('routes.unscoped-nested-binding', Confidence::Suspected),
+        locatedFinding('routes.missing-authorization', Confidence::Suspected, new Location('app/A.php', 11)),
+        locatedFinding('routes.missing-authorization', Confidence::Suspected, new Location('app/B.php', 10)),
+    ]);
+
+    expect($report->findings)->toHaveCount(4);
+});
+
+it('keeps a suspicion nothing confirms', function () {
+    expect((new ScanReport([locatedFinding('routes.missing-authorization', Confidence::Suspected)]))->findings)->toHaveCount(1);
+});
+
+it('replaces a certain finding a probe confirmed, so it is not reported twice', function () {
+    $report = new ScanReport([
+        locatedFinding('routes.csrf-excluded', Confidence::Certain),
+        locatedFinding('routes.csrf-excluded', Confidence::Confirmed),
+    ]);
+
+    expect($report->findings)->toHaveCount(1)
+        ->and($report->findings[0]->confidence)->toBe(Confidence::Confirmed);
+});
+
+it('keeps every confirmed finding at the same location', function () {
+    $report = new ScanReport([
+        locatedFinding('a.rule', Confidence::Confirmed),
+        locatedFinding('a.rule', Confidence::Confirmed),
+    ]);
+
+    expect($report->findings)->toHaveCount(2);
+});
+
+it('never merges findings without a location', function () {
+    $report = new ScanReport([
+        locatedFinding('a.rule', Confidence::Suspected, null),
+        locatedFinding('a.rule', Confidence::Confirmed, null),
+    ]);
+
+    expect($report->findings)->toHaveCount(2);
 });
