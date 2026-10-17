@@ -6,6 +6,7 @@ namespace Jklejczyk\SecurityToolkit\Reporting;
 
 use Jklejczyk\SecurityToolkit\Core\Findings\Confidence;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
+use Jklejczyk\SecurityToolkit\Core\Findings\ReproductionStep;
 use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
 use Jklejczyk\SecurityToolkit\Core\ScanReport;
 use Symfony\Component\Console\Formatter\OutputFormatter;
@@ -93,6 +94,14 @@ final class ConsoleReporter implements Reporter
 
         $output->writeln(self::INDENT.$this->escape($finding->description));
         $output->writeln(self::INDENT.'Fix: '.$this->escape($finding->remediation));
+
+        if ($finding->reproduction !== null) {
+            $output->writeln(self::INDENT.'Reproduce:');
+
+            foreach ($finding->reproduction->steps as $step) {
+                $output->writeln(self::INDENT.'  '.$this->escape($this->step($step)));
+            }
+        }
 
         foreach ($finding->references as $reference) {
             $output->writeln(self::INDENT.'→ '.$this->escape($reference));
@@ -224,6 +233,16 @@ final class ConsoleReporter implements Reporter
             Confidence::Suspected => ' <fg=yellow>SUSPECTED</>',
             Confidence::Confirmed => ' <fg=red;options=bold>CONFIRMED</>',
         };
+    }
+
+    /**
+     * "as A: PUT /api/invoices/41 [due_date, notes] → expected 403 or 404, got 200".
+     */
+    private function step(ReproductionStep $step): string
+    {
+        $fields = $step->fields === [] ? '' : ' ['.implode(', ', $step->fields).']';
+
+        return sprintf('as %s: %s%s → expected %s, got %s', $step->actor, $step->request, $fields, $step->expected, $step->received);
     }
 
     private function style(Severity $severity): string

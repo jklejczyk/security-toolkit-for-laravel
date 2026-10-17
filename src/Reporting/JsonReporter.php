@@ -6,6 +6,7 @@ namespace Jklejczyk\SecurityToolkit\Reporting;
 
 use Jklejczyk\SecurityToolkit\Core\Findings\Cvss;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
+use Jklejczyk\SecurityToolkit\Core\Findings\ReproductionStep;
 use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
 use Jklejczyk\SecurityToolkit\Core\Notice;
 use Jklejczyk\SecurityToolkit\Core\ScannerFailure;
@@ -45,6 +46,19 @@ final class JsonReporter implements Reporter
                 'location' => $finding->location === null ? null : [
                     'file' => $finding->location->file,
                     'line' => $finding->location->line,
+                ],
+                'reproduction' => $finding->reproduction === null ? null : [
+                    'probe' => $finding->reproduction->probe,
+                    'data' => $finding->reproduction->data,
+                    'actors' => $finding->reproduction->actors,
+                    'steps' => array_map(fn (ReproductionStep $step): array => [
+                        'actor' => $step->actor,
+                        'request' => $step->request,
+                        'resource' => $step->resource,
+                        'fields' => $step->fields,
+                        'expected' => $step->expected,
+                        'received' => $step->received,
+                    ], $finding->reproduction->steps),
                 ],
             ], $visible),
             'skipped' => array_map(fn (SkippedCheck $skipped): array => [

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Jklejczyk\SecurityToolkit\Core\Findings\Reproduction;
+use Jklejczyk\SecurityToolkit\Core\Findings\ReproductionStep;
 use Jklejczyk\SecurityToolkit\Core\InstalledPackages;
 use Jklejczyk\SecurityToolkit\Core\ScanContext;
 use Jklejczyk\SecurityToolkit\Tests\TestCase;
@@ -53,4 +55,14 @@ function temporaryApp(): string
     ]);
 
     return $root;
+}
+
+function sampleReproduction(): Reproduction
+{
+    return new Reproduction(
+        'idor',
+        'factories',
+        [['name' => 'A', 'model' => 'App\\Models\\User', 'id' => 12, 'owner' => 'App\\Models\\Company#3']],
+        [new ReproductionStep('A', 'DELETE /api/invoices/41', 'App\\Models\\Invoice#41 (owner B)', [], '403 or 404', '204 (Invoice #41 deleted)')],
+    );
 }

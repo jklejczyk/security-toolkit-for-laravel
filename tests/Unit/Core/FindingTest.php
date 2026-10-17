@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Jklejczyk\SecurityToolkit\Core\Findings\Confidence;
 use Jklejczyk\SecurityToolkit\Core\Findings\Cvss;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
+use Jklejczyk\SecurityToolkit\Core\Findings\Location;
 use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
 
 it('has no classification by default', function () {
@@ -45,4 +46,23 @@ it('rejects a malformed CVE ID', function (string $cve) {
 it('is certain unless stated otherwise', function () {
     expect((new Finding('a.rule', Severity::Low, 'T', 'D', 'R'))->confidence)->toBe(Confidence::Certain)
         ->and((new Finding('a.rule', Severity::Low, 'T', 'D', 'R', confidence: Confidence::Suspected))->confidence)->toBe(Confidence::Suspected);
+});
+
+it('has no reproduction by default', function () {
+    expect((new Finding('a.rule', Severity::High, 'T', 'D', 'R'))->reproduction)->toBeNull();
+});
+
+it('confirms a suspicion without changing its rule, severity, classification or location', function () {
+    $suspected = new Finding('routes.missing-authorization', Severity::Medium, 'T', 'Loads a model.', 'R', ['https://x'], new Location('app/A.php', 7), [639], confidence: Confidence::Suspected);
+
+    $confirmed = $suspected->withConfirmation(sampleReproduction(), 'user A deleted an invoice of company B.');
+
+    expect($confirmed->ruleId)->toBe('routes.missing-authorization')
+        ->and($confirmed->severity)->toBe(Severity::Medium)
+        ->and($confirmed->cwe)->toBe([639])
+        ->and($confirmed->references)->toBe(['https://x'])
+        ->and($confirmed->location?->line)->toBe(7)
+        ->and($confirmed->confidence)->toBe(Confidence::Confirmed)
+        ->and($confirmed->description)->toBe('Loads a model. Confirmed by a probe: user A deleted an invoice of company B.')
+        ->and($confirmed->reproduction?->probe)->toBe('idor');
 });

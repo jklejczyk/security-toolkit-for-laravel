@@ -31,6 +31,7 @@ final readonly class Finding
         public ?Cvss $cvss = null,
         public array $cve = [],
         public Confidence $confidence = Confidence::Certain,
+        public ?Reproduction $reproduction = null,
     ) {
         if ($cvss !== null && $cvss->severity() !== $severity) {
             throw new InvalidArgumentException(sprintf(
@@ -53,5 +54,27 @@ final readonly class Finding
                 throw new InvalidArgumentException(sprintf('Finding %s has an invalid CVE ID "%s".', $ruleId, $id));
             }
         }
+    }
+
+    /**
+     * The same finding, reproduced by a probe: rule, severity, classification and location stay,
+     * so a confirmed suspicion keeps the identity it had in earlier reports.
+     */
+    public function withConfirmation(Reproduction $reproduction, string $evidence): self
+    {
+        return new self(
+            $this->ruleId,
+            $this->severity,
+            $this->title,
+            $this->description.' Confirmed by a probe: '.$evidence,
+            $this->remediation,
+            $this->references,
+            $this->location,
+            $this->cwe,
+            $this->cvss,
+            $this->cve,
+            Confidence::Confirmed,
+            $reproduction,
+        );
     }
 }

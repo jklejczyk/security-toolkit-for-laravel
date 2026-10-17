@@ -47,6 +47,7 @@ it('renders the whole report as a single JSON document', function () {
             'cvss' => null,
             'cve' => [],
             'location' => ['file' => 'app/A.php', 'line' => 3],
+            'reproduction' => null,
         ]],
         'skipped' => [['check' => 'a.prod', 'reason' => 'reason']],
         'unavailable' => [['scanner' => 'zap', 'reason' => 'needs Docker']],
@@ -110,4 +111,22 @@ it('lists notices separately from findings', function () {
 
     expect($json['notices'])->toBe([['scanner' => 'probes', 'message' => 'no probes yet']])
         ->and($json['findings'])->toBe([]);
+});
+
+it('renders the reproduction of a confirmed finding', function () {
+    $finding = (new Finding('a.rule', Severity::High, 'T', 'D', 'R'))->withConfirmation(sampleReproduction(), 'it worked.');
+
+    expect(renderJson(new ScanReport([$finding]))['findings'][0]['reproduction'])->toBe([
+        'probe' => 'idor',
+        'data' => 'factories',
+        'actors' => [['name' => 'A', 'model' => 'App\\Models\\User', 'id' => 12, 'owner' => 'App\\Models\\Company#3']],
+        'steps' => [[
+            'actor' => 'A',
+            'request' => 'DELETE /api/invoices/41',
+            'resource' => 'App\\Models\\Invoice#41 (owner B)',
+            'fields' => [],
+            'expected' => '403 or 404',
+            'received' => '204 (Invoice #41 deleted)',
+        ]],
+    ]);
 });

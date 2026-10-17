@@ -6,6 +6,8 @@ use Jklejczyk\SecurityToolkit\Core\Findings\Confidence;
 use Jklejczyk\SecurityToolkit\Core\Findings\Cvss;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
 use Jklejczyk\SecurityToolkit\Core\Findings\Location;
+use Jklejczyk\SecurityToolkit\Core\Findings\Reproduction;
+use Jklejczyk\SecurityToolkit\Core\Findings\ReproductionStep;
 use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
 use Jklejczyk\SecurityToolkit\Core\Notice;
 use Jklejczyk\SecurityToolkit\Core\ScannerFailure;
@@ -257,4 +259,17 @@ it('does not count notices as findings', function () {
 
 it('omits the notices section when there are none', function () {
     expect(renderConsole(new ScanReport))->not->toContain('Notices:');
+});
+
+it('renders the reproduction steps under the fix', function () {
+    $reproduction = new Reproduction('idor', 'existing', [], [
+        new ReproductionStep('A', 'PUT /api/invoices/41', null, ['due_date', 'notes'], '403 or 404', '200 (Invoice #41 updated)'),
+        new ReproductionStep('guest', 'DELETE /api/invoices/41', null, [], '401', '204'),
+    ]);
+    $finding = (new Finding('a.rule', Severity::High, 'T', 'D', 'R'))->withConfirmation($reproduction, 'yes.');
+
+    expect(renderConsole(new ScanReport([$finding])))
+        ->toContain('Reproduce:')
+        ->toContain('as A: PUT /api/invoices/41 [due_date, notes] → expected 403 or 404, got 200 (Invoice #41 updated)')
+        ->toContain('as guest: DELETE /api/invoices/41 → expected 401, got 204');
 });
