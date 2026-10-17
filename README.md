@@ -114,7 +114,7 @@ This checks code and dependencies on every push. Do not add
 rules would judge CI's values and report problems production does not have.
 
 `--format=json` prints the whole report as one JSON document with `findings`
-(including `cwe`, `cvss` and `cve`), `skipped`, `unavailable`, `errors` and a
+(including `confidence`, `cwe`, `cvss` and `cve`), `skipped`, `unavailable`, `errors` and a
 `summary`.
 
 ## Checks

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Jklejczyk\SecurityToolkit\Core\Findings\Confidence;
 use Jklejczyk\SecurityToolkit\Core\Findings\Cvss;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
 use Jklejczyk\SecurityToolkit\Core\Findings\Location;
@@ -210,4 +211,30 @@ it('groups only the findings left visible by the minimum severity', function () 
     expect($output)->not->toContain('findings:')
         ->toContain('dompdf/dompdf: One')
         ->not->toContain('dompdf/dompdf: Two');
+});
+
+it('labels suspected and confirmed findings, but not certain ones', function () {
+    $output = renderConsole(new ScanReport([
+        new Finding('a.rule', Severity::High, 'Certain one', 'D', 'R1'),
+        new Finding('b.rule', Severity::High, 'Suspected one', 'D', 'R2', confidence: Confidence::Suspected),
+        new Finding('c.rule', Severity::High, 'Confirmed one', 'D', 'R3', confidence: Confidence::Confirmed),
+    ]));
+
+    expect($output)
+        ->toContain('HIGH  Certain one')
+        ->toContain('HIGH  SUSPECTED Suspected one')
+        ->toContain('HIGH  CONFIRMED Confirmed one');
+});
+
+it('does not group findings of different confidence', function () {
+    $output = renderConsole(new ScanReport([
+        new Finding('a.rule', Severity::Medium, 'One', 'D', 'Same fix.', confidence: Confidence::Suspected),
+        new Finding('a.rule', Severity::Medium, 'Two', 'D', 'Same fix.', confidence: Confidence::Confirmed),
+        new Finding('a.rule', Severity::Medium, 'Three', 'D', 'Same fix.', confidence: Confidence::Confirmed),
+    ]));
+
+    expect($output)
+        ->toContain('MEDIUM  SUSPECTED One')
+        ->toContain('MEDIUM  CONFIRMED 2 findings: Two')
+        ->and(substr_count($output, 'Fix: Same fix.'))->toBe(2);
 });

@@ -15,6 +15,7 @@ final readonly class Finding
      * @param  list<int>  $cwe  CWE numbers, e.g. [614] for CWE-614
      * @param  ?Cvss  $cvss  set only when the finding can be exploited on its own; it then dictates the severity
      * @param  list<string>  $cve  CVE IDs the application is affected by, not CVEs mentioned for context
+     * @param  Confidence  $confidence  suspected for conclusions drawn from code, confirmed when a probe reproduced the attack
      *
      * @throws InvalidArgumentException when the classification is inconsistent
      */
@@ -29,6 +30,7 @@ final readonly class Finding
         public array $cwe = [],
         public ?Cvss $cvss = null,
         public array $cve = [],
+        public Confidence $confidence = Confidence::Certain,
     ) {
         if ($cvss !== null && $cvss->severity() !== $severity) {
             throw new InvalidArgumentException(sprintf(

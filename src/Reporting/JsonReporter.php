@@ -29,6 +29,7 @@ final class JsonReporter implements Reporter
             'findings' => array_map(fn (Finding $finding): array => [
                 'rule' => $finding->ruleId,
                 'severity' => $finding->severity->value,
+                'confidence' => $finding->confidence->value,
                 'title' => $finding->title,
                 'description' => $finding->description,
                 'remediation' => $finding->remediation,

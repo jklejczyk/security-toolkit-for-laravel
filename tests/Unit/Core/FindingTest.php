@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Jklejczyk\SecurityToolkit\Core\Findings\Confidence;
 use Jklejczyk\SecurityToolkit\Core\Findings\Cvss;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
 use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
@@ -40,3 +41,8 @@ it('rejects a malformed CVE ID', function (string $cve) {
     expect(fn () => new Finding('a.rule', Severity::Low, 'T', 'D', 'R', cve: [$cve]))
         ->toThrow(InvalidArgumentException::class, 'invalid CVE ID');
 })->with(['GHSA-3cw5-7cxw-v5qg', 'CVE-2023-123', 'cve-2023-24813', 'CVE-2023-24813 ', "CVE-2023-24813\n"]);
+
+it('is certain unless stated otherwise', function () {
+    expect((new Finding('a.rule', Severity::Low, 'T', 'D', 'R'))->confidence)->toBe(Confidence::Certain)
+        ->and((new Finding('a.rule', Severity::Low, 'T', 'D', 'R', confidence: Confidence::Suspected))->confidence)->toBe(Confidence::Suspected);
+});

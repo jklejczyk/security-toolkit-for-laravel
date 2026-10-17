@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Jklejczyk\SecurityToolkit\Reporting;
 
+use Jklejczyk\SecurityToolkit\Core\Findings\Confidence;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
 use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
 use Jklejczyk\SecurityToolkit\Core\ScanReport;
@@ -62,9 +63,10 @@ final class ConsoleReporter implements Reporter
     private function renderFinding(Finding $finding, OutputInterface $output): void
     {
         $output->writeln(sprintf(
-            ' <%s> %s </> <options=bold>%s</>  <fg=gray>%s</>',
+            ' <%s> %s </>%s <options=bold>%s</>  <fg=gray>%s</>',
             $this->style($finding->severity),
             strtoupper($finding->severity->value),
+            $this->confidenceLabel($finding->confidence),
             $this->escape($finding->title),
             $this->escape($finding->ruleId),
         ));
@@ -91,8 +93,8 @@ final class ConsoleReporter implements Reporter
     }
 
     /**
-     * Findings of the same rule with the same fix, e.g. every advisory of one package, in the
-     * order of their first finding.
+     * Findings of the same rule with the same fix and confidence, e.g. every advisory of one
+     * package, in the order of their first finding.
      *
      * @param  list<Finding>  $findings
      * @return list<non-empty-list<Finding>>
@@ -102,7 +104,7 @@ final class ConsoleReporter implements Reporter
         $groups = [];
 
         foreach ($findings as $finding) {
-            $groups[$finding->ruleId."\0".$finding->remediation][] = $finding;
+            $groups[$finding->ruleId."\0".$finding->remediation."\0".$finding->confidence->value][] = $finding;
         }
 
         return array_values($groups);
@@ -117,9 +119,10 @@ final class ConsoleReporter implements Reporter
         $first = $group[0];
 
         $output->writeln(sprintf(
-            ' <%s> %s </> <options=bold>%s</>  <fg=gray>%s</>',
+            ' <%s> %s </>%s <options=bold>%s</>  <fg=gray>%s</>',
             $this->style($first->severity),
             strtoupper($first->severity->value),
+            $this->confidenceLabel($first->confidence),
             $this->escape(sprintf('%d findings: %s', count($group), $this->commonTitle($group))),
             $this->escape($first->ruleId),
         ));
@@ -200,6 +203,18 @@ final class ConsoleReporter implements Reporter
         }
 
         return implode(' · ', [...$parts, ...$finding->cve]);
+    }
+
+    /**
+     * " SUSPECTED" or " CONFIRMED"; nothing for a state that was read directly.
+     */
+    private function confidenceLabel(Confidence $confidence): string
+    {
+        return match ($confidence) {
+            Confidence::Certain => '',
+            Confidence::Suspected => ' <fg=yellow>SUSPECTED</>',
+            Confidence::Confirmed => ' <fg=red;options=bold>CONFIRMED</>',
+        };
     }
 
     private function style(Severity $severity): string

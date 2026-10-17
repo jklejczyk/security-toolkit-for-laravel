@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Jklejczyk\SecurityToolkit\Core\Findings\Confidence;
 use Jklejczyk\SecurityToolkit\Core\Findings\Cvss;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
 use Jklejczyk\SecurityToolkit\Core\Findings\Location;
@@ -36,6 +37,7 @@ it('renders the whole report as a single JSON document', function () {
         'findings' => [[
             'rule' => 'a.rule',
             'severity' => 'high',
+            'confidence' => 'certain',
             'title' => 'Title <x>',
             'description' => 'Desc',
             'remediation' => 'Fix',
@@ -90,4 +92,13 @@ it('renders the classification of a finding', function () {
             'score' => 7.5,
         ])
         ->and($json['findings'][0]['cve'])->toBe(['CVE-2021-3129']);
+});
+
+it('includes how sure the toolkit is about each finding', function () {
+    $output = new BufferedOutput;
+    (new JsonReporter)->render(new ScanReport([
+        new Finding('a.rule', Severity::Medium, 'T', 'D', 'R', confidence: Confidence::Suspected),
+    ]), Severity::Info, $output);
+
+    expect(json_decode($output->fetch(), true)['findings'][0]['confidence'])->toBe('suspected');
 });

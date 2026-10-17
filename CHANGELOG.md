@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (including `#[Unguarded]` on Laravel 13), reported only when code in `app/`
   passes the whole request to `create()`, `fill()`, `update()` or a similar
   method.
+- Every finding has a confidence: `certain` (read directly from the
+  configuration or the booted application), `suspected` (inferred from code)
+  or `confirmed` (reproduced by a probe). The JSON report has a `confidence`
+  field and the console labels suspected and confirmed findings.
 
 ### Changed
 
