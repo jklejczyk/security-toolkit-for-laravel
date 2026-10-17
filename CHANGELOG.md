@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   configuration or the booted application), `suspected` (inferred from code)
   or `confirmed` (reproduced by a probe). The JSON report has a `confidence`
   field and the console labels suspected and confirmed findings.
+- `routes` module, for controllers in `app/` (closures and Livewire pages are
+  left out): `routes.missing-authentication` for writes to a bound model
+  without login, `routes.missing-authorization` for logged-in routes that load
+  a model and never authorize it, `routes.unscoped-nested-binding` for nested
+  models that belong to their parent but are not scoped, all reported as
+  suspected; `routes.csrf-excluded` for URIs excluded from CSRF that match
+  logged-in session routes while `session.same_site` is `none` or `null`.
 
 ### Changed
 

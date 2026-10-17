@@ -2,7 +2,7 @@
 
 A security audit for Laravel 12 and 13 applications in one Artisan command.
 It reads your application from the inside (configuration, file storage,
-authentication, models, dependencies) and reports what is wrong, why it is dangerous
+authentication, models, routes, dependencies) and reports what is wrong, why it is dangerous
 and how to fix it.
 
 ```bash
@@ -127,6 +127,7 @@ The scan is split into modules, each focused on one area of the application:
   reached over HTTP.
 - **`auth`**: session cookies, password rules and API tokens.
 - **`models`**: Eloquent mass assignment protection.
+- **`routes`**: authentication, authorization, scoped bindings and CSRF exclusions of your routes.
 - **`dependencies`**: known vulnerabilities and abandoned packages among the
   installed Composer packages.
 

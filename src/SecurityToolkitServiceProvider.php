@@ -12,6 +12,7 @@ use Jklejczyk\SecurityToolkit\Scanners\Config\ConfigScanner;
 use Jklejczyk\SecurityToolkit\Scanners\Dependencies\DependenciesScanner;
 use Jklejczyk\SecurityToolkit\Scanners\Files\FilesScanner;
 use Jklejczyk\SecurityToolkit\Scanners\Models\ModelsScanner;
+use Jklejczyk\SecurityToolkit\Scanners\Routes\RoutesScanner;
 
 final class SecurityToolkitServiceProvider extends ServiceProvider
 {
@@ -27,6 +28,7 @@ final class SecurityToolkitServiceProvider extends ServiceProvider
         $registry->register(FilesScanner::class);
         $registry->register(AuthScanner::class);
         $registry->register(ModelsScanner::class);
+        $registry->register(RoutesScanner::class);
         $registry->register(DependenciesScanner::class);
 
         if ($this->app->runningInConsole()) {

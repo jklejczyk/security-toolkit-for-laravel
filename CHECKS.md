@@ -66,6 +66,35 @@ mass assigned somewhere in `app/`, such as `Post::create($request->all())` or
 `$guarded` is safe. Pivot models, which are unguarded by default, are not
 reported. When every model is unguarded, only `models.unguarded` is reported.
 
+## `routes`
+
+| Rule | Runs in | Detects | Severity | CWE | CVSS |
+| --- | --- | --- | --- | --- | --- |
+| `routes.missing-authentication` | everywhere | `POST`, `PUT`, `PATCH` or `DELETE` route with a model parameter and no `auth`, `auth.basic`, `signed` or `can:` middleware (suspected) | High | 306 | — |
+| `routes.missing-authorization` | everywhere | Logged-in route with a model parameter that never authorizes it (suspected) | Medium | 639 | — |
+| `routes.unscoped-nested-binding` | everywhere | Nested model parameters where the child belongs to the parent, without scoped bindings (suspected) | Medium | 639 | — |
+| `routes.csrf-excluded` | everywhere | URI excluded from CSRF that matches a logged-in session route, with `session.same_site` `none` or `null` | Medium | 352 | 6.5 |
+
+The rules look only at routes whose controller is in `app/`; closures and
+Livewire pages (`Route::livewire()`) are left out. Authorization counts when
+the route has a `can:` middleware, the action calls `authorize()`, `Gate::`,
+`->can()`, `->cannot()`, `abort_if()`, `abort_unless()` or `abort(403)`, the
+controller constructor calls `authorizeResource()`, or a form request of the
+action has an `authorize()` that does more than `return true`. In doubt the
+rule stays silent; authorization in a service or a global scope is not seen,
+which is why these findings are suspected.
+
+`routes.unscoped-nested-binding` treats a custom key on the child
+(`{invoice:number}`) as scoped, because Laravel scopes it by itself, and skips
+actions that compare the foreign key themselves.
+
+`routes.csrf-excluded` reads `validateCsrfTokens(except: [...])` and the
+`$except` of an application CSRF middleware. Webhooks without a session are
+not reported, and with `same_site` `lax` or `strict` the browser does not send
+the session cookie cross-site. Outside production, when `same_site` comes from
+`env()`, the rule is skipped with a reason, but only if a matching exclusion
+exists.
+
 ## `dependencies`
 
 | Rule | Runs in | Detects | Severity | CWE |
