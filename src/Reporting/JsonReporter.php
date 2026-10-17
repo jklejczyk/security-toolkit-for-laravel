@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Jklejczyk\SecurityToolkit\Reporting;
 
+use Jklejczyk\SecurityToolkit\Core\Coverage\CoverageEntry;
+use Jklejczyk\SecurityToolkit\Core\Coverage\CoverageTarget;
 use Jklejczyk\SecurityToolkit\Core\Findings\Cvss;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
 use Jklejczyk\SecurityToolkit\Core\Findings\ReproductionStep;
@@ -77,6 +79,13 @@ final class JsonReporter implements Reporter
                 'scanner' => $notice->scannerId,
                 'message' => $notice->message,
             ], $report->notices),
+            'coverage' => array_map(fn (CoverageEntry $entry): array => [
+                'probe' => $entry->probe,
+                'checked' => $entry->checked,
+                'confirmed' => $entry->confirmed,
+                'not_confirmed' => array_map($this->target(...), $entry->notConfirmed),
+                'skipped' => array_map($this->target(...), $entry->skipped),
+            ], $report->coverage),
             'summary' => $summary,
         ];
 
@@ -84,5 +93,13 @@ final class JsonReporter implements Reporter
             json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
             OutputInterface::OUTPUT_RAW,
         );
+    }
+
+    /**
+     * @return array{target: string, reason: string, hint: ?string}
+     */
+    private function target(CoverageTarget $target): array
+    {
+        return ['target' => $target->target, 'reason' => $target->reason, 'hint' => $target->hint];
     }
 }

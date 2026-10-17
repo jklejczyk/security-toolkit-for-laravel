@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Jklejczyk\SecurityToolkit\Reporting;
 
+use Jklejczyk\SecurityToolkit\Core\Coverage\CoverageEntry;
 use Jklejczyk\SecurityToolkit\Core\Findings\Confidence;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
 use Jklejczyk\SecurityToolkit\Core\Findings\ReproductionStep;
@@ -42,6 +43,15 @@ final class ConsoleReporter implements Reporter
             }
         }
 
+        if ($report->coverage !== []) {
+            $output->writeln('');
+            $output->writeln(' <comment>Probe coverage:</comment>');
+
+            foreach ($report->coverage as $entry) {
+                $this->renderCoverage($entry, $output);
+            }
+        }
+
         if ($report->notices !== []) {
             $output->writeln('');
             $output->writeln(' <comment>Notices:</comment>');
@@ -66,6 +76,32 @@ final class ConsoleReporter implements Reporter
 
             foreach ($report->errors as $error) {
                 $output->writeln(sprintf('   %s  %s', $this->escape($error->scannerId), $this->escape($error->message)));
+            }
+        }
+    }
+
+    private function renderCoverage(CoverageEntry $entry, OutputInterface $output): void
+    {
+        $output->writeln(sprintf('   %s  checked %d · confirmed %d', $this->escape($entry->probe), $entry->checked, $entry->confirmed));
+
+        foreach ($entry->notConfirmed as $target) {
+            $output->writeln(sprintf('     not confirmed: %s  %s', $this->escape($target->target), $this->escape($target->reason)));
+        }
+
+        $groups = [];
+
+        foreach ($entry->skipped as $target) {
+            $groups[$target->reason."\0".($target->hint ?? '')][] = $target;
+        }
+
+        foreach ($groups as $targets) {
+            $count = count($targets);
+            $hint = $targets[0]->hint === null ? '' : ' — '.$targets[0]->hint;
+
+            $output->writeln(sprintf('     skipped: %s (%d %s)%s', $this->escape($targets[0]->reason), $count, $count === 1 ? 'route' : 'routes', $this->escape($hint)));
+
+            foreach ($targets as $target) {
+                $output->writeln('       '.$this->escape($target->target));
             }
         }
     }

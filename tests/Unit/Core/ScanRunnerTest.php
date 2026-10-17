@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Jklejczyk\SecurityToolkit\Core\Availability;
 use Jklejczyk\SecurityToolkit\Core\Contracts\Scanner;
+use Jklejczyk\SecurityToolkit\Core\Coverage\CoverageEntry;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
 use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
 use Jklejczyk\SecurityToolkit\Core\Notice;
@@ -88,4 +89,14 @@ it('collects notices from every scanner', function () {
     expect($report->notices)->toHaveCount(1)
         ->and($report->notices[0]->scannerId)->toBe('a')
         ->and($report->notices[0]->message)->toBe('hello');
+});
+
+it('collects probe coverage from every scanner', function () {
+    $entry = new CoverageEntry('idor', 2, 1, [], []);
+
+    $report = (new ScanRunner)->run([
+        runnerScanner('probes', fn () => new ScanResult(coverage: [$entry])),
+    ], localContext());
+
+    expect($report->coverage)->toBe([$entry]);
 });

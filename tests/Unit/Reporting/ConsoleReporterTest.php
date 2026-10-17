@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Jklejczyk\SecurityToolkit\Core\Coverage\CoverageEntry;
+use Jklejczyk\SecurityToolkit\Core\Coverage\CoverageTarget;
 use Jklejczyk\SecurityToolkit\Core\Findings\Confidence;
 use Jklejczyk\SecurityToolkit\Core\Findings\Cvss;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
@@ -272,4 +274,26 @@ it('renders the reproduction steps under the fix', function () {
         ->toContain('Reproduce:')
         ->toContain('as A: PUT /api/invoices/41 [due_date, notes] → expected 403 or 404, got 200 (Invoice #41 updated)')
         ->toContain('as guest: DELETE /api/invoices/41 → expected 401, got 204');
+});
+
+it('renders probe coverage with skipped targets grouped by reason', function () {
+    $output = renderConsole(new ScanReport(coverage: [
+        new CoverageEntry('idor', 4, 1, [new CoverageTarget('GET /posts/{post}', '403')], [
+            new CoverageTarget('GET /payments/{payment}', 'owner of Payment unknown', 'map it in probes.owners'),
+            new CoverageTarget('DELETE /payments/{payment}', 'owner of Payment unknown', 'map it in probes.owners'),
+            new CoverageTarget('PUT /posts/{post}', 'needs a request body (not supported yet)'),
+        ]),
+    ]));
+
+    expect($output)
+        ->toContain(' Probe coverage:')
+        ->toContain('idor  checked 4 · confirmed 1')
+        ->toContain('not confirmed: GET /posts/{post}  403')
+        ->toContain('owner of Payment unknown (2 routes) — map it in probes.owners')
+        ->toContain('GET /payments/{payment}')
+        ->toContain('needs a request body (not supported yet) (1 route)');
+});
+
+it('omits the probe coverage section without probes', function () {
+    expect(renderConsole(new ScanReport))->not->toContain('Probe coverage');
 });

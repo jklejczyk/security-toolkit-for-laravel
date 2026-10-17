@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Jklejczyk\SecurityToolkit\Core\Coverage\CoverageEntry;
+use Jklejczyk\SecurityToolkit\Core\Coverage\CoverageTarget;
 use Jklejczyk\SecurityToolkit\Core\Findings\Confidence;
 use Jklejczyk\SecurityToolkit\Core\Findings\Cvss;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
@@ -53,6 +55,7 @@ it('renders the whole report as a single JSON document', function () {
         'unavailable' => [['scanner' => 'zap', 'reason' => 'needs Docker']],
         'errors' => [['scanner' => 'broken', 'message' => 'boom']],
         'notices' => [],
+        'coverage' => [],
         'summary' => ['critical' => 0, 'high' => 1, 'medium' => 0, 'low' => 0, 'info' => 0, 'unknown' => 0, 'hidden' => 0],
     ]);
 });
@@ -129,4 +132,18 @@ it('renders the reproduction of a confirmed finding', function () {
             'received' => '204 (Invoice #41 deleted)',
         ]],
     ]);
+});
+
+it('renders probe coverage', function () {
+    $json = renderJson(new ScanReport(coverage: [
+        new CoverageEntry('idor', 2, 1, [new CoverageTarget('GET /a/{b}', '403')], [new CoverageTarget('GET /c/{d}', 'no policy', 'add one')]),
+    ]));
+
+    expect($json['coverage'])->toBe([[
+        'probe' => 'idor',
+        'checked' => 2,
+        'confirmed' => 1,
+        'not_confirmed' => [['target' => 'GET /a/{b}', 'reason' => '403', 'hint' => null]],
+        'skipped' => [['target' => 'GET /c/{d}', 'reason' => 'no policy', 'hint' => 'add one']],
+    ]]);
 });

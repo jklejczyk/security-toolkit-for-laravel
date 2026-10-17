@@ -19,6 +19,7 @@ final class ScanRunner
         $unavailable = [];
         $errors = [];
         $notices = [];
+        $coverage = [];
 
         foreach ($scanners as $scanner) {
             $availability = $scanner->availability();
@@ -40,8 +41,9 @@ final class ScanRunner
             array_push($findings, ...$result->findings);
             array_push($skipped, ...$result->skipped);
             array_push($notices, ...$result->notices);
+            array_push($coverage, ...$result->coverage);
         }
 
-        return new ScanReport($findings, $skipped, $unavailable, $errors, $notices);
+        return new ScanReport($findings, $skipped, $unavailable, $errors, $notices, $coverage);
     }
 }
