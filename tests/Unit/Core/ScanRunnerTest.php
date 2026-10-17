@@ -6,6 +6,7 @@ use Jklejczyk\SecurityToolkit\Core\Availability;
 use Jklejczyk\SecurityToolkit\Core\Contracts\Scanner;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
 use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
+use Jklejczyk\SecurityToolkit\Core\Notice;
 use Jklejczyk\SecurityToolkit\Core\ScanContext;
 use Jklejczyk\SecurityToolkit\Core\ScanResult;
 use Jklejczyk\SecurityToolkit\Core\ScanRunner;
@@ -76,4 +77,15 @@ it('records a failing scanner and keeps running the others', function () {
         ->and($report->errors[0]->scannerId)->toBe('broken')
         ->and($report->errors[0]->message)->toBe('boom')
         ->and($report->findings)->toHaveCount(1);
+});
+
+it('collects notices from every scanner', function () {
+    $report = (new ScanRunner)->run([
+        runnerScanner('a', fn () => new ScanResult(notices: [new Notice('a', 'hello')])),
+        runnerScanner('b', fn () => new ScanResult),
+    ], localContext());
+
+    expect($report->notices)->toHaveCount(1)
+        ->and($report->notices[0]->scannerId)->toBe('a')
+        ->and($report->notices[0]->message)->toBe('hello');
 });

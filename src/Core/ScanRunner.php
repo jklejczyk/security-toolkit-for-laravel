@@ -18,6 +18,7 @@ final class ScanRunner
         $skipped = [];
         $unavailable = [];
         $errors = [];
+        $notices = [];
 
         foreach ($scanners as $scanner) {
             $availability = $scanner->availability();
@@ -38,8 +39,9 @@ final class ScanRunner
 
             array_push($findings, ...$result->findings);
             array_push($skipped, ...$result->skipped);
+            array_push($notices, ...$result->notices);
         }
 
-        return new ScanReport($findings, $skipped, $unavailable, $errors);
+        return new ScanReport($findings, $skipped, $unavailable, $errors, $notices);
     }
 }

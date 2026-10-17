@@ -21,12 +21,14 @@ final readonly class ScanReport
      * @param  list<SkippedCheck>  $skipped
      * @param  list<UnavailableScanner>  $unavailable
      * @param  list<ScannerFailure>  $errors
+     * @param  list<Notice>  $notices
      */
     public function __construct(
         array $findings = [],
         public array $skipped = [],
         public array $unavailable = [],
         public array $errors = [],
+        public array $notices = [],
     ) {
         usort(
             $findings,

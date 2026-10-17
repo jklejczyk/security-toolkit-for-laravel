@@ -7,6 +7,7 @@ use Jklejczyk\SecurityToolkit\Core\Findings\Cvss;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
 use Jklejczyk\SecurityToolkit\Core\Findings\Location;
 use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
+use Jklejczyk\SecurityToolkit\Core\Notice;
 use Jklejczyk\SecurityToolkit\Core\ScannerFailure;
 use Jklejczyk\SecurityToolkit\Core\ScanReport;
 use Jklejczyk\SecurityToolkit\Core\SkippedCheck;
@@ -50,6 +51,7 @@ it('renders the whole report as a single JSON document', function () {
         'skipped' => [['check' => 'a.prod', 'reason' => 'reason']],
         'unavailable' => [['scanner' => 'zap', 'reason' => 'needs Docker']],
         'errors' => [['scanner' => 'broken', 'message' => 'boom']],
+        'notices' => [],
         'summary' => ['critical' => 0, 'high' => 1, 'medium' => 0, 'low' => 0, 'info' => 0, 'unknown' => 0, 'hidden' => 0],
     ]);
 });
@@ -101,4 +103,11 @@ it('includes how sure the toolkit is about each finding', function () {
     ]), Severity::Info, $output);
 
     expect(json_decode($output->fetch(), true)['findings'][0]['confidence'])->toBe('suspected');
+});
+
+it('lists notices separately from findings', function () {
+    $json = renderJson(new ScanReport(notices: [new Notice('probes', 'no probes yet')]));
+
+    expect($json['notices'])->toBe([['scanner' => 'probes', 'message' => 'no probes yet']])
+        ->and($json['findings'])->toBe([]);
 });

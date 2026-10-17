@@ -7,6 +7,7 @@ namespace Jklejczyk\SecurityToolkit\Reporting;
 use Jklejczyk\SecurityToolkit\Core\Findings\Cvss;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
 use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
+use Jklejczyk\SecurityToolkit\Core\Notice;
 use Jklejczyk\SecurityToolkit\Core\ScannerFailure;
 use Jklejczyk\SecurityToolkit\Core\ScanReport;
 use Jklejczyk\SecurityToolkit\Core\SkippedCheck;
@@ -58,6 +59,10 @@ final class JsonReporter implements Reporter
                 'scanner' => $error->scannerId,
                 'message' => $error->message,
             ], $report->errors),
+            'notices' => array_map(fn (Notice $notice): array => [
+                'scanner' => $notice->scannerId,
+                'message' => $notice->message,
+            ], $report->notices),
             'summary' => $summary,
         ];
 

@@ -7,6 +7,7 @@ use Jklejczyk\SecurityToolkit\Core\Findings\Cvss;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
 use Jklejczyk\SecurityToolkit\Core\Findings\Location;
 use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
+use Jklejczyk\SecurityToolkit\Core\Notice;
 use Jklejczyk\SecurityToolkit\Core\ScannerFailure;
 use Jklejczyk\SecurityToolkit\Core\ScanReport;
 use Jklejczyk\SecurityToolkit\Core\SkippedCheck;
@@ -237,4 +238,23 @@ it('does not group findings of different confidence', function () {
         ->toContain('MEDIUM  SUSPECTED One')
         ->toContain('MEDIUM  CONFIRMED 2 findings: Two')
         ->and(substr_count($output, 'Fix: Same fix.'))->toBe(2);
+});
+
+it('renders notices in their own section', function () {
+    $output = renderConsole(new ScanReport(notices: [new Notice('probes', 'probes ran against the application database <db>')]));
+
+    expect($output)
+        ->toContain(' Notices:')
+        ->toContain('probes  probes ran against the application database <db>')
+        ->toContain('No findings to show.');
+});
+
+it('does not count notices as findings', function () {
+    $report = new ScanReport(notices: [new Notice('probes', 'no probes yet')]);
+
+    expect($report->hasFindingsAtLeast(Severity::Info))->toBeFalse();
+});
+
+it('omits the notices section when there are none', function () {
+    expect(renderConsole(new ScanReport))->not->toContain('Notices:');
 });

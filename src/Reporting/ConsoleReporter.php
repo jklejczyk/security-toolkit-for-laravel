@@ -41,6 +41,15 @@ final class ConsoleReporter implements Reporter
             }
         }
 
+        if ($report->notices !== []) {
+            $output->writeln('');
+            $output->writeln(' <comment>Notices:</comment>');
+
+            foreach ($report->notices as $notice) {
+                $output->writeln(sprintf('   %s  %s', $this->escape($notice->scannerId), $this->escape($notice->message)));
+            }
+        }
+
         if ($report->unavailable !== []) {
             $output->writeln('');
             $output->writeln(' <comment>Unavailable scanners:</comment>');
