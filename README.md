@@ -128,6 +128,9 @@ The scan is split into modules, each focused on one area of the application:
 - **`auth`**: session cookies, password rules and API tokens.
 - **`models`**: Eloquent mass assignment protection.
 - **`routes`**: authentication, authorization, scoped bindings and CSRF exclusions of your routes.
+- **`probes`**: dynamic checks (DAST) that confirm the `routes` and `models`
+  suspicions by sending real requests on a test database — opt-in and never on
+  production.
 - **`dependencies`**: known vulnerabilities and abandoned packages among the
   installed Composer packages.
 

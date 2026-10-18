@@ -95,6 +95,37 @@ the session cookie cross-site. Outside production, when `same_site` comes from
 `env()`, the rule is skipped with a reason, but only if a matching exclusion
 exists.
 
+## `probes`
+
+The DAST probes confirm the `routes` and `models` suspicions by actually
+sending requests to the application on a test database. They are opt-in and
+never run on production: without `SECURITY_TOOLKIT_PROBES_CONNECTION` pointing
+at a dedicated test connection the module is unavailable. A confirmed finding
+keeps the `ruleId`, severity, CWE and location of the static rule it proved.
+
+| Rule | Runs in | Detects | Severity | CWE |
+| --- | --- | --- | --- | --- |
+| `probes.idor` | opt-in probes | A signed-in user reads, changes or deletes a record owned by someone else, while the policy denies it | Medium | 639 |
+| `probes.csrf-unprotected` | opt-in probes | A session route without CSRF middleware changes data without a token | Medium | 352 |
+| `probes.missing-rate-limit` | opt-in probes | Login, password reset or 2FA has no limit on failed attempts | Medium (2FA: High) | 307 |
+| `probes.mass-assignment` | opt-in probes | A write route lets a user set a privileged or tenant column (is_admin, role, company_id, …) that the validation rules do not mention | High / Medium | 915 |
+
+`probes.mass-assignment` confirms the static `models.guarded-empty` or
+`models.unguarded` finding for the model when one exists, keeping its `ruleId`,
+severity, CWE and location; the `probes.mass-assignment` rule is emitted only
+when the static scan saw nothing (for example an action that filters with
+`$request->except()`, which the static `models.guarded-empty` check does not
+treat as whole-request assignment).
+
+A probe confirms an attack only when the effect is real, not from the status
+code alone: a record that changed or was deleted, a route that answered with
+the other owner's data, or a series of logins that never hit a limit. Writes
+are confirmed when the column really changed, read back from the database, and
+request bodies are built from the action's `FormRequest::rules()`, so the probe
+sends the route a request it would genuinely accept (never a 422 mistaken for
+"safe"). Routes or models the probe could not check are listed in the "Probe
+coverage" section with the reason.
+
 ## `dependencies`
 
 | Rule | Runs in | Detects | Severity | CWE |

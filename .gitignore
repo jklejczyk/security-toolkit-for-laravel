@@ -15,3 +15,4 @@ phpstan.neon
 
 # Local, personal notes for Claude Code
 CLAUDE.local.md
+opencode.json

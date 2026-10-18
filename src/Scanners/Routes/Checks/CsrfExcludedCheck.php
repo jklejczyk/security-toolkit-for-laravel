@@ -4,30 +4,20 @@ declare(strict_types=1);
 
 namespace Jklejczyk\SecurityToolkit\Scanners\Routes\Checks;
 
-use Illuminate\Auth\Middleware\Authenticate;
-use Illuminate\Support\Str;
 use Jklejczyk\SecurityToolkit\Core\Checks\Check;
 use Jklejczyk\SecurityToolkit\Core\Checks\CheckSkipped;
 use Jklejczyk\SecurityToolkit\Core\Findings\Cvss;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
-use Jklejczyk\SecurityToolkit\Core\Findings\Location;
-use Jklejczyk\SecurityToolkit\Core\Map\RouteInfo;
 use Jklejczyk\SecurityToolkit\Core\ScanContext;
-use ReflectionClass;
-use Throwable;
+use Jklejczyk\SecurityToolkit\Scanners\Routes\CsrfExclusions;
 
 final class CsrfExcludedCheck implements Check
 {
-    /**
-     * CSRF middleware: PreventRequestForgery in Laravel 13, VerifyCsrfToken (and ValidateCsrfToken)
-     * in Laravel 12. Both keep the URIs from validateCsrfTokens(except:) in a static $neverVerify.
-     */
-    private const CSRF_MIDDLEWARE = [
-        'Illuminate\Foundation\Http\Middleware\PreventRequestForgery',
-        'Illuminate\Foundation\Http\Middleware\VerifyCsrfToken',
-    ];
-
     private const VECTOR = 'CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:H/A:N';
+
+    public function __construct(
+        private readonly CsrfExclusions $csrf = new CsrfExclusions,
+    ) {}
 
     public function id(): string
     {
@@ -49,12 +39,12 @@ final class CsrfExcludedCheck implements Check
         $exposed = [];
 
         foreach ($context->map->routes() as $route) {
-            if (! $route->inApp || ! $route->isWrite() || ! $this->usesCsrfMiddleware($route) || ! $this->usesSession($route)) {
+            if (! $route->inApp || ! $route->isWrite() || ! $this->csrf->usesMiddleware($route) || ! $this->csrf->usesSession($route)) {
                 continue;
             }
 
-            foreach ($this->exclusions($route) as $pattern => $source) {
-                if ($this->matches($pattern, $route)) {
+            foreach ($this->csrf->exclusions($route) as $pattern => $source) {
+                if ($this->csrf->matches($pattern, $route)) {
                     $exposed[$pattern]['source'] = $source;
                     $exposed[$pattern]['routes'][] = implode('|', $route->methods).' /'.$route->uri;
                 }
@@ -78,117 +68,6 @@ final class CsrfExcludedCheck implements Check
         foreach ($exposed as $pattern => ['source' => $source, 'routes' => $routes]) {
             yield $this->finding((string) $pattern, $source, array_values(array_unique($routes)), $sameSite, $context);
         }
-    }
-
-    private function usesCsrfMiddleware(RouteInfo $route): bool
-    {
-        foreach (self::CSRF_MIDDLEWARE as $class) {
-            if (class_exists($class) && $route->usesMiddleware($class)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Authenticate with a guard whose driver is "session" (the default guard when none is named).
-     */
-    private function usesSession(RouteInfo $route): bool
-    {
-        $guards = (array) config('auth.guards', []);
-        $default = config('auth.defaults.guard');
-
-        foreach ($route->middlewareParameters(Authenticate::class) as $parameters) {
-            $names = $parameters === '' ? [$default] : explode(',', $parameters);
-
-            foreach ($names as $name) {
-                if (is_string($name) && is_array($guards[$name] ?? null) && ($guards[$name]['driver'] ?? null) === 'session') {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Excluded URI pattern => where it is configured: the static list of the framework middleware
-     * and the $except of an application subclass used by the route.
-     *
-     * @return array<string, ?string>
-     */
-    private function exclusions(RouteInfo $route): array
-    {
-        $exclusions = [];
-
-        foreach (self::CSRF_MIDDLEWARE as $class) {
-            foreach ($this->neverVerify($class) as $pattern) {
-                $exclusions[$pattern] = 'bootstrap/app.php';
-            }
-        }
-
-        foreach ($route->middleware as $middleware) {
-            $class = explode(':', $middleware, 2)[0];
-
-            if (in_array($class, self::CSRF_MIDDLEWARE, true) || ! class_exists($class) || ! $this->isCsrfMiddleware($class)) {
-                continue;
-            }
-
-            try {
-                $reflection = new ReflectionClass($class);
-                $except = $reflection->getDefaultProperties()['except'] ?? [];
-            } catch (Throwable) {
-                continue;
-            }
-
-            foreach (is_array($except) ? $except : [] as $pattern) {
-                if (is_string($pattern)) {
-                    $exclusions[$pattern] = $reflection->getFileName() ?: null;
-                }
-            }
-        }
-
-        return $exclusions;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function neverVerify(string $class): array
-    {
-        if (! class_exists($class) || ! property_exists($class, 'neverVerify')) {
-            return [];
-        }
-
-        try {
-            $value = (new ReflectionClass($class))->getStaticPropertyValue('neverVerify');
-        } catch (Throwable) {
-            return [];
-        }
-
-        return array_values(array_filter(is_array($value) ? $value : [], is_string(...)));
-    }
-
-    private function isCsrfMiddleware(string $class): bool
-    {
-        foreach (self::CSRF_MIDDLEWARE as $base) {
-            if (class_exists($base) && is_subclass_of($class, $base)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * The same matching as $request->is(): "*" matches anything, also across segments.
-     */
-    private function matches(string $pattern, RouteInfo $route): bool
-    {
-        $pattern = $pattern === '/' ? $pattern : trim($pattern, '/');
-
-        return Str::is($pattern, $route->uri) || Str::is($pattern, '/'.$route->uri);
     }
 
     private function sameSiteFromEnv(ScanContext $context): bool
@@ -231,31 +110,9 @@ final class CsrfExcludedCheck implements Check
                 'https://laravel.com/docs/csrf#csrf-excluding-uris',
                 'https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html',
             ],
-            $this->location($pattern, $source, $context),
+            $this->csrf->location($pattern, $source, $context->basePath),
             cwe: [352],
             cvss: $cvss,
         );
-    }
-
-    private function location(string $pattern, ?string $source, ScanContext $context): ?Location
-    {
-        if ($source === null) {
-            return null;
-        }
-
-        $path = str_starts_with($source, '/') ? $source : rtrim($context->basePath, '/').'/'.$source;
-        $lines = is_readable($path) ? file($path) : false;
-
-        if ($lines === false) {
-            return null;
-        }
-
-        foreach ($lines as $number => $line) {
-            if (str_contains($line, "'".$pattern."'") || str_contains($line, '"'.$pattern.'"')) {
-                return Location::inApplication($path, $context->basePath, $number + 1);
-            }
-        }
-
-        return Location::inApplication($path, $context->basePath);
     }
 }
