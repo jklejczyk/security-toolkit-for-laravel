@@ -6,7 +6,7 @@ namespace Jklejczyk\SecurityToolkit\Scanners\Probes\Probes;
 
 use Illuminate\Contracts\Encryption\Encrypter;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -444,9 +444,9 @@ final class RateLimitProbe implements Probe
      */
     private function excludeCsrf(array $uris): array
     {
-        $before = (new PreventRequestForgery(app(), app(Encrypter::class)))->getExcludedPaths();
+        $before = (new VerifyCsrfToken(app(), app(Encrypter::class)))->getExcludedPaths();
 
-        PreventRequestForgery::except($uris);
+        VerifyCsrfToken::except($uris);
 
         return array_values(array_filter($before, is_string(...)));
     }
@@ -456,10 +456,10 @@ final class RateLimitProbe implements Probe
      */
     private function restoreCsrf(array $before): void
     {
-        PreventRequestForgery::flushState();
+        VerifyCsrfToken::flushState();
 
         if ($before !== []) {
-            PreventRequestForgery::except($before);
+            VerifyCsrfToken::except($before);
         }
     }
 

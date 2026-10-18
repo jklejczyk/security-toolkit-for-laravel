@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-18
+
+### Fixed
+
+- The rate limit probe works on Laravel 12: it used the CSRF middleware class
+  that exists only in Laravel 13.
+
 ## [0.2.0] - 2026-10-18
 
 Authorization: static route checks and opt-in probes that confirm them.
@@ -87,6 +94,7 @@ First public release.
 - `unknown` severity for advisories published without one; it always meets the
   `--fail-on` threshold.
 
-[Unreleased]: https://github.com/jklejczyk/security-toolkit-for-laravel/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/jklejczyk/security-toolkit-for-laravel/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/jklejczyk/security-toolkit-for-laravel/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/jklejczyk/security-toolkit-for-laravel/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jklejczyk/security-toolkit-for-laravel/releases/tag/v0.1.0

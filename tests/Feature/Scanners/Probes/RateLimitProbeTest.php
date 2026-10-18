@@ -8,7 +8,7 @@ use Illuminate\Contracts\Encryption\Encrypter;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Password;
@@ -371,6 +371,6 @@ it('excludes its targets from the CSRF check and puts the exclusions back', func
     $findings = iterator_to_array((new RateLimitProbe)->run($context));
 
     expect($findings)->toHaveCount(1)
-        ->and((new PreventRequestForgery(app(), app(Encrypter::class)))->getExcludedPaths())->toBe([])
+        ->and((new VerifyCsrfToken(app(), app(Encrypter::class)))->getExcludedPaths())->toBe([])
         ->and($client->request('POST', '/login', ['email' => 'a@example.com', 'password' => 'x'])->status)->toBe(419);
 });
