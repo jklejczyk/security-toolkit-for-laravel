@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cannot be loaded (for example an incompatible method signature, a PHP fatal
   error). It now loads only classes whose source shows a parent chain ending
   in an Eloquent model.
+- `routes.missing-authorization` no longer reports routes guarded by an
+  application middleware that authorizes: one whose `handle()` uses Laravel's
+  authorization API (`->can()`, `Gate::`, `abort(403)`), or one that receives
+  a parameter from the route (`permission:posts.edit`, `area:admin`) and can
+  turn the request away with a 401/403, `abort()`, a redirect or an exception.
 
 ## [0.2.1] - 2026-10-18
 

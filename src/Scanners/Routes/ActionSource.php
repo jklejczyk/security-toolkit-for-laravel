@@ -13,8 +13,8 @@ use ReflectionNamedType;
 use Throwable;
 
 /**
- * The code of a route action and of the places that authorize it: the controller constructor
- * and the authorize() method of form requests the action receives.
+ * The code of a route action and of the places that authorize it: application middleware, the
+ * controller constructor and the authorize() method of form requests the action receives.
  */
 final class ActionSource
 {
@@ -22,6 +22,11 @@ final class ActionSource
      * Calls that authorize a request, e.g. $this->authorize(), Gate::allows() or abort_unless().
      */
     private const AUTHORIZATION = '/(?:\bauthorize\w*\(|\bGate::|->(?:can|cannot|canAny|allows|denies|authorize)\(|\babort_(?:if|unless)\(|\babort\(\s*(?:403|404|Response::HTTP_(?:FORBIDDEN|NOT_FOUND))|AuthorizationException|AccessDeniedHttpException|Response::deny)/';
+
+    /**
+     * Ways a middleware turns a request away: a 401/403 status, abort(), a redirect or an exception.
+     */
+    private const DENIAL = '/(?:\b40[13]\b|HTTP_(?:FORBIDDEN|UNAUTHORIZED)|\babort\w*\(|\bredirect\(|\bto_route\(|\bthrow\s+new\b)/';
 
     /**
      * Code of the action method, without its doc comment; null for a closure or an unreadable file.
@@ -45,6 +50,10 @@ final class ActionSource
      */
     public function authorizes(RouteInfo $route): ?bool
     {
+        if ($this->middlewareAuthorizes($route)) {
+            return true;
+        }
+
         $action = $this->action($route);
 
         if ($action === null) {
@@ -56,6 +65,49 @@ final class ActionSource
         }
 
         return $this->constructorAuthorizes($route) || $this->formRequestAuthorizes($route);
+    }
+
+    /**
+     * An application middleware that authorizes: its handle() uses Laravel's authorization API, or
+     * the route names what to check ("permission:posts.edit", "area:admin") and handle() can turn
+     * the request away. A parameter that never leads to a denial (e.g. a locale) is not authorization.
+     */
+    private function middlewareAuthorizes(RouteInfo $route): bool
+    {
+        foreach ($route->middleware as $middleware) {
+            [$class, $parameters] = array_pad(explode(':', $middleware, 2), 2, '');
+
+            $code = $this->applicationHandle($class);
+
+            if ($code === null) {
+                continue;
+            }
+
+            if (preg_match(self::AUTHORIZATION, $code) === 1 || ($parameters !== '' && preg_match(self::DENIAL, $code) === 1)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Code of handle() of a middleware class declared in app/; null for framework and package middleware.
+     */
+    private function applicationHandle(string $class): ?string
+    {
+        if (! class_exists($class) || ! method_exists($class, 'handle')) {
+            return null;
+        }
+
+        $handle = new ReflectionMethod($class, 'handle');
+        $file = $handle->getFileName();
+
+        if ($file === false || ! str_starts_with($file, app_path().DIRECTORY_SEPARATOR)) {
+            return null;
+        }
+
+        return $this->body($handle);
     }
 
     /**
