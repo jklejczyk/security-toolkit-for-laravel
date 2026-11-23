@@ -16,10 +16,18 @@ use Jklejczyk\SecurityToolkit\Scanners\Routes\Checks\UnscopedNestedBindingCheck;
 use Jklejczyk\SecurityToolkit\Tests\Fixtures\Map\Post;
 use Jklejczyk\SecurityToolkit\Tests\Fixtures\Map\PostController;
 use Jklejczyk\SecurityToolkit\Tests\Fixtures\Map\PostPolicy;
+use Jklejczyk\SecurityToolkit\Tests\Fixtures\Routes\ClosureGuardedPostController;
 use Jklejczyk\SecurityToolkit\Tests\Fixtures\Routes\CommentController;
 use Jklejczyk\SecurityToolkit\Tests\Fixtures\Routes\GuardedPostController;
+use Jklejczyk\SecurityToolkit\Tests\Fixtures\Routes\LocaleClosurePostController;
+use Jklejczyk\SecurityToolkit\Tests\Fixtures\Routes\Middleware\BackOffice;
+use Jklejczyk\SecurityToolkit\Tests\Fixtures\Routes\Middleware\CheckPermission;
+use Jklejczyk\SecurityToolkit\Tests\Fixtures\Routes\Middleware\DeniesWithoutParameters;
+use Jklejczyk\SecurityToolkit\Tests\Fixtures\Routes\Middleware\EnsureAdmin;
+use Jklejczyk\SecurityToolkit\Tests\Fixtures\Routes\Middleware\SetLocale;
 use Jklejczyk\SecurityToolkit\Tests\Fixtures\Routes\OpenPostController;
 use Jklejczyk\SecurityToolkit\Tests\Fixtures\Routes\ResourcePostController;
+use Jklejczyk\SecurityToolkit\Tests\Fixtures\Routes\SelfCheckingPostController;
 
 beforeEach(function () {
     // The fixture controllers stand in for app/: only routes defined there are checked.
@@ -82,6 +90,27 @@ describe('routes.missing-authentication', function () {
         expect(routeFindings(new MissingAuthenticationCheck))->toBe([]);
     });
 
+    it('recognises a login check in the action or in a closure middleware of the controller', function (array $action) {
+        Route::middleware('web')->put('posts/{post}', $action);
+
+        expect(routeFindings(new MissingAuthenticationCheck))->toBe([]);
+    })->with([
+        'a negated check in a condition' => [[SelfCheckingPostController::class, 'viaCheck']],
+        'the user in a condition' => [[SelfCheckingPostController::class, 'viaUser']],
+        'abort_unless() with the helper' => [[SelfCheckingPostController::class, 'viaHelper']],
+        'the request user in a condition' => [[SelfCheckingPostController::class, 'viaRequest']],
+        'a closure middleware in the constructor' => [[ClosureGuardedPostController::class, 'update']],
+    ]);
+
+    it('does not take a mention of the user or an unrelated closure middleware for a login check', function (array $action) {
+        Route::middleware('web')->put('posts/{post}', $action);
+
+        expect(routeFindings(new MissingAuthenticationCheck))->toHaveCount(1);
+    })->with([
+        'the user id in a log line' => [[SelfCheckingPostController::class, 'onlyLogsTheUser']],
+        'a closure middleware that sets the locale' => [[LocaleClosurePostController::class, 'update']],
+    ]);
+
     it('ignores controllers outside app/', function () {
         Route::put('posts/{post}', [PostController::class, 'update']);
 
@@ -131,6 +160,26 @@ describe('routes.missing-authorization', function () {
 
         expect(routeFindings(new MissingAuthorizationCheck))->toBe([]);
     });
+
+    it('recognises an application middleware that authorizes', function (string $middleware) {
+        Route::middleware(['auth', $middleware])->put('posts/{post}', [OpenPostController::class, 'update']);
+
+        expect(routeFindings(new MissingAuthorizationCheck))->toBe([]);
+    })->with([
+        'a permission on the route, denied with 403' => CheckPermission::class.':posts.edit,posts.delete',
+        'an area on the route, denied with a redirect' => BackOffice::class.':admin',
+        'Laravel authorization without parameters' => EnsureAdmin::class,
+    ]);
+
+    it('does not take an application middleware that cannot deny, or denies without a route parameter, for authorization', function (string $middleware) {
+        Route::middleware(['auth', $middleware])->put('posts/{post}', [OpenPostController::class, 'update']);
+
+        expect(routeFindings(new MissingAuthorizationCheck))->toHaveCount(1);
+    })->with([
+        'a parameter but no denial' => SetLocale::class.':pl',
+        'a redirect but no parameter' => DeniesWithoutParameters::class,
+        'a denying middleware used without its parameter' => BackOffice::class,
+    ]);
 
     it('leaves routes without login to routes.missing-authentication', function () {
         Route::put('posts/{post}', [OpenPostController::class, 'update']);

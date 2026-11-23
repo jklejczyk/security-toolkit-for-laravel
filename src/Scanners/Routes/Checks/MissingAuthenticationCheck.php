@@ -15,9 +15,14 @@ use Jklejczyk\SecurityToolkit\Core\Findings\Location;
 use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
 use Jklejczyk\SecurityToolkit\Core\Map\RouteInfo;
 use Jklejczyk\SecurityToolkit\Core\ScanContext;
+use Jklejczyk\SecurityToolkit\Scanners\Routes\ActionSource;
 
 final class MissingAuthenticationCheck implements Check
 {
+    public function __construct(
+        private readonly ActionSource $source = new ActionSource,
+    ) {}
+
     public function id(): string
     {
         return 'routes.missing-authentication';
@@ -44,6 +49,10 @@ final class MissingAuthenticationCheck implements Check
                 continue;
             }
 
+            if ($this->source->checksLogin($route)) {
+                continue;
+            }
+
             yield $this->finding($route);
         }
     }
@@ -57,7 +66,7 @@ final class MissingAuthenticationCheck implements Check
             $this->id(),
             Severity::High,
             sprintf('%s /%s changes %s records without login', $methods, $route->uri, $models),
-            sprintf('The route %s /%s (%s@%s) changes or deletes an existing %s, but has no authentication middleware (auth, auth.basic), no signed URL and no can: middleware, so anyone who knows or guesses an id can call it. If the action checks a token or signature itself, this finding can be ignored.', $methods, $route->uri, class_basename((string) $route->controller), $route->action, $models),
+            sprintf('The route %s /%s (%s@%s) changes or deletes an existing %s, but has no authentication middleware (auth, auth.basic), no signed URL, no can: middleware and no login check in the action, so anyone who knows or guesses an id can call it. If the action checks a token or signature itself, this finding can be ignored.', $methods, $route->uri, class_basename((string) $route->controller), $route->action, $models),
             'Put the route in a group with the auth middleware (or auth:sanctum for an API), or use a signed URL (signed middleware) for links sent by email.',
             [
                 'https://laravel.com/docs/authentication#protecting-routes',

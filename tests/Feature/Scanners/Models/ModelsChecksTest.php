@@ -120,6 +120,41 @@ describe('models.guarded-empty', function () {
         '$request->all()',
     ]);
 
+    it('reports only the models the assigned request reaches, with that call as evidence', function () {
+        appModel($this->root, 'Role', 'protected $guarded = [];');
+        appModel($this->root, 'Permission', 'protected $guarded = [];');
+        appController($this->root, "\$other->update(\$request->all());\n\$role = \\App\\Role::create(\$request->all());");
+
+        $findings = modelFindings(new GuardedEmptyCheck);
+
+        expect($findings)->toHaveCount(1)
+            ->and($findings[0]->title)->toBe('Role accepts mass assignment of every attribute')
+            ->and($findings[0]->description)->toContain('app/Http/Controllers/PostController.php:4');
+    });
+
+    it('links a variable to its model by name, type or assignment', function (string $code) {
+        appModel($this->root, 'Post', 'protected $guarded = [];');
+        appController($this->root, $code);
+
+        expect(modelFindings(new GuardedEmptyCheck))->toHaveCount(1);
+    })->with([
+        'named after the model' => '$blogPost = 1; $post->update($request->all());',
+        'a typed parameter' => 'function update(Request $request, Post $item) { $item->update($request->all()); }',
+        'assigned from the model' => '$item = Post::findOrFail(1); $item->fill($request->all());',
+        'a new instance' => '$item = new Post; $item->fill($request->all());',
+    ]);
+
+    it('does not report a model the assigned request cannot be linked to', function (string $code) {
+        appModel($this->root, 'Post', 'protected $guarded = [];');
+        appController($this->root, $code);
+
+        expect(modelFindings(new GuardedEmptyCheck))->toBe([]);
+    })->with([
+        'another variable' => '$item->update($request->all());',
+        'a generic repository' => '$this->model->update($request->all());',
+        'another model' => 'Comment::create($request->all());',
+    ]);
+
     it('does not report models with fillable or guarded attributes', function () {
         appModel($this->root, 'Post', "protected \$fillable = ['title'];");
         appModel($this->root, 'Tag', "protected \$guarded = ['id'];");

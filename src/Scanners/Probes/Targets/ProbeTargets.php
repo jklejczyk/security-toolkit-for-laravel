@@ -95,7 +95,7 @@ final class ProbeTargets
 
         /** @var list<Check> $checks */
         $checks = [
-            new MissingAuthenticationCheck,
+            new MissingAuthenticationCheck($source),
             new MissingAuthorizationCheck($source),
             new UnscopedNestedBindingCheck($source),
         ];
