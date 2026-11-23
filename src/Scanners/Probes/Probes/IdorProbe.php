@@ -170,14 +170,81 @@ final class IdorProbe implements Probe
             return null;
         }
 
+        $parent = null;
+
+        if (count($route->models) > 1 && $this->uri($route, $ownership, $data->recordA, $data->recordA) === null) {
+            $nested = $this->nested($context, $route, $owner, $data, $label);
+
+            if ($nested === null) {
+                return null;
+            }
+
+            [$parent, $childA] = $nested;
+            $data = new ProbeData($data->mode, $data->a, $data->b, $childA, $data->recordB);
+        }
+
         return match ($method) {
-            'GET' => $this->read($context, $route, $suspicion, $ownership, $data, $actor, $ability),
-            'DELETE' => $this->delete($context, $route, $suspicion, $ownership, $data, $actor, $ability, $method),
-            default => $this->write($context, $route, $suspicion, $ownership, $data, $actor, $ability, $method, $owner),
+            'GET' => $this->read($context, $route, $suspicion, $ownership, $data, $actor, $ability, $parent),
+            'DELETE' => $this->delete($context, $route, $suspicion, $ownership, $data, $actor, $ability, $method, $parent),
+            default => $this->write($context, $route, $suspicion, $ownership, $data, $actor, $ability, $method, $owner, $parent),
         };
     }
 
-    private function read(ProbeContext $context, RouteInfo $route, ?Finding $suspicion, OwnershipResolver $ownership, ProbeData $data, Authenticatable $actor, string $ability): ?Finding
+    /**
+     * The URL parent of a nested route that is not on the child's owner path (a client in
+     * clients/{client}/invoices/{invoice} when the invoice belongs to a company): a parent record of A
+     * and a child of A under it, for the baseline. One such parent only; a deeper chain built from
+     * unlinked records would answer 404 even for A and hide what the route does.
+     *
+     * @return array{0: Model, 1: Model}|null
+     */
+    private function nested(ProbeContext $context, RouteInfo $route, Owner $owner, ProbeData $data, string $label): ?array
+    {
+        if (count($route->models) > 2) {
+            $context->coverage()->skipped(new CoverageTarget($label, 'nested routes with more than one parent outside the owner path are not supported', 'set probes.owners'));
+
+            return null;
+        }
+
+        $parentModel = $route->models[0]->model;
+        $childModel = $route->models[1]->model;
+        $relation = null;
+
+        foreach ($context->map()->belongsTo($childModel) as $belongsTo) {
+            if (is_a($belongsTo->related, $parentModel, true)) {
+                $relation = $belongsTo;
+
+                break;
+            }
+        }
+
+        if ($relation === null) {
+            $context->coverage()->skipped(new CoverageTarget($label, sprintf('cannot find how %s belongs to %s', class_basename($childModel), class_basename($parentModel)), 'set probes.owners'));
+
+            return null;
+        }
+
+        $selector = $context->data();
+        $parent = $selector?->recordFor($parentModel, $data->a, $data->mode);
+
+        if ($selector === null || $parent === null) {
+            $context->coverage()->skipped(new CoverageTarget($label, sprintf('no %s of A', class_basename($parentModel)), 'set probes.owners or probes.data'));
+
+            return null;
+        }
+
+        $childA = $selector->childUnder($childModel, $owner, $data->a, $relation->foreignKey, $parent, $data->mode);
+
+        if ($childA === null) {
+            $context->coverage()->skipped(new CoverageTarget($label, sprintf('no %s of A under its %s', class_basename($childModel), class_basename($parentModel))));
+
+            return null;
+        }
+
+        return [$parent, $childA];
+    }
+
+    private function read(ProbeContext $context, RouteInfo $route, ?Finding $suspicion, OwnershipResolver $ownership, ProbeData $data, Authenticatable $actor, string $ability, ?Model $parent = null): ?Finding
     {
         $recordA = $data->recordA;
         $recordB = $data->recordB;
@@ -187,8 +254,8 @@ final class IdorProbe implements Probe
             return null;
         }
 
-        $baseline = $this->uri($route, $ownership, $recordA, $recordA);
-        $attack = $this->uri($route, $ownership, $recordA, $recordB);
+        $baseline = $this->uri($route, $ownership, $recordA, $recordA, $parent);
+        $attack = $this->uri($route, $ownership, $recordA, $recordB, $parent);
 
         if ($baseline === null || $attack === null) {
             $context->coverage()->skipped(new CoverageTarget($label, 'needs records for every URL parameter'));
@@ -223,7 +290,7 @@ final class IdorProbe implements Probe
         ));
     }
 
-    private function delete(ProbeContext $context, RouteInfo $route, ?Finding $suspicion, OwnershipResolver $ownership, ProbeData $data, Authenticatable $actor, string $ability, string $method): ?Finding
+    private function delete(ProbeContext $context, RouteInfo $route, ?Finding $suspicion, OwnershipResolver $ownership, ProbeData $data, Authenticatable $actor, string $ability, string $method, ?Model $parent = null): ?Finding
     {
         $recordA = $data->recordA;
         $recordB = $data->recordB;
@@ -233,7 +300,7 @@ final class IdorProbe implements Probe
             return null;
         }
 
-        $attack = $this->uri($route, $ownership, $recordA, $recordB);
+        $attack = $this->uri($route, $ownership, $recordA, $recordB, $parent);
 
         if ($attack === null) {
             $context->coverage()->skipped(new CoverageTarget($label, 'needs records for every URL parameter'));
@@ -273,7 +340,7 @@ final class IdorProbe implements Probe
      * changes. The effect on B (not the status) is the proof, so a route that validates and then
      * refuses, or one that returns 200 without saving, is never confirmed.
      */
-    private function write(ProbeContext $context, RouteInfo $route, ?Finding $suspicion, OwnershipResolver $ownership, ProbeData $data, Authenticatable $actor, string $ability, string $method, Owner $owner): ?Finding
+    private function write(ProbeContext $context, RouteInfo $route, ?Finding $suspicion, OwnershipResolver $ownership, ProbeData $data, Authenticatable $actor, string $ability, string $method, Owner $owner, ?Model $parent = null): ?Finding
     {
         $recordA = $data->recordA;
         $recordB = $data->recordB;
@@ -283,7 +350,7 @@ final class IdorProbe implements Probe
             return null;
         }
 
-        $attack = $this->uri($route, $ownership, $recordA, $recordB);
+        $attack = $this->uri($route, $ownership, $recordA, $recordB, $parent);
 
         if ($attack === null) {
             $context->coverage()->skipped(new CoverageTarget($label, 'needs records for every URL parameter'));
@@ -300,7 +367,7 @@ final class IdorProbe implements Probe
         }
 
         $child = $route->models[count($route->models) - 1]->model;
-        $own = $this->uri($route, $ownership, $recordA, $recordA);
+        $own = $this->uri($route, $ownership, $recordA, $recordA, $parent);
         $body = $payload->build($route, $owner, $data->a, $child, $own === null ? null : new ValidationRequest($context->client(), $method, $own, $actor));
 
         if (! $body->isBuilt() || $body->body === null) {
@@ -398,13 +465,17 @@ final class IdorProbe implements Probe
      * chosen record for the last (child) one. Null when the route's parameters do not follow the
      * owner chain of the child model.
      */
-    private function uri(RouteInfo $route, OwnershipResolver $ownership, Model $parentSource, Model $child): ?string
+    private function uri(RouteInfo $route, OwnershipResolver $ownership, Model $parentSource, Model $child, ?Model $parent = null): ?string
     {
         $params = $route->models;
         $count = count($params);
 
         if ($count === 0) {
             return null;
+        }
+
+        if ($parent !== null && $count === 2) {
+            return $this->fill($route, [$this->segment($params[0], $parent), $this->segment($params[1], $child)]);
         }
 
         $owner = $ownership->for($params[$count - 1]->model)->owner;
@@ -430,6 +501,14 @@ final class IdorProbe implements Probe
 
         $segments[] = $this->segment($params[$count - 1], $child);
 
+        return $this->fill($route, $segments);
+    }
+
+    /**
+     * @param  list<string>  $segments
+     */
+    private function fill(RouteInfo $route, array $segments): string
+    {
         $replaced = preg_replace_callback(
             '/\{([^}?]+)\??\}/',
             function () use (&$segments): string {

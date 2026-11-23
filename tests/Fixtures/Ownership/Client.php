@@ -7,6 +7,7 @@ namespace Jklejczyk\SecurityToolkit\Tests\Fixtures\Ownership;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 final class Client extends Model
 {
@@ -21,6 +22,16 @@ final class Client extends Model
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
+    }
+
+    /**
+     * Scoped bindings load a statement through this relation.
+     *
+     * @return HasMany<Statement, $this>
+     */
+    public function statements(): HasMany
+    {
+        return $this->hasMany(Statement::class);
     }
 
     protected static function newFactory(): ClientFactory
