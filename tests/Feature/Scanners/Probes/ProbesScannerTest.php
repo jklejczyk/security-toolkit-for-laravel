@@ -168,6 +168,17 @@ describe('running', function () {
             && in_array('--internal', $process->command, true));
     });
 
+    it('reads a report whose text has multibyte characters', function () {
+        config(['security-toolkit.probes.connection' => 'testing']);
+
+        // "ą" is C4 85 in UTF-8; 0x85 alone is a line break (NEL) to a byte-mode regex.
+        $json = (new ProbeReport([], [], [new Notice('probes', 'Pole musi być liczbą.')]))->toJson();
+
+        Process::fake(fn () => Process::result(output: $json));
+
+        expect((new ProbesScanner)->scan(localContext())->notices[0]->message)->toBe('Pole musi być liczbą.');
+    });
+
     it('reports a warning when it ran against the application database on purpose', function () {
         config([
             'database.default' => 'app',

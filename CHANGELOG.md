@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The probes module no longer fails with "The probe process did not print a JSON
+  object" when the report contains characters such as `ą`: the child
+  process output was split on a byte that is part of their UTF-8 encoding.
+
 - The `models` module no longer crashes the whole scan when a class in `app/`
   cannot be loaded (for example an incompatible method signature, a PHP fatal
   error). It now loads only classes whose source shows a parent chain ending
