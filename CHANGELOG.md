@@ -7,8 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-11-23
+
+Fixes from the first run on real applications: fewer false positives, a scan
+crash, and probes that check more routes and no longer confirm what did not
+happen.
+
 ### Added
 
+- `auth.verified-without-must-verify-email` reports routes protected by the
+  `verified` middleware while the user model does not implement
+  `MustVerifyEmail`, so the middleware lets every user through, and anyone can
+  register an account.
 - Probe request bodies are built from a `validate([...])` call in the action
   when its rules are plain strings, and, when no rules give an accepted body,
   from the fields the application's 422 answers name for a record of user A
@@ -17,11 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   path, for example `clients/{client}/invoices/{invoice}` with invoices owned
   by a company.
 
-- `auth.verified-without-must-verify-email` reports routes protected by the
-  `verified` middleware while the user model does not implement
-  `MustVerifyEmail`, so the middleware lets every user through, and anyone can
-  register an account.
-
 ### Changed
 
 - `routes.missing-authorization` says in its description when registration is
@@ -29,27 +34,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   does not change.
 
 ### Fixed
-
-- Probe request bodies take the value from the rule type, not from modifiers:
-  `['required', 'integer']` or `'nullable|email'` no longer get a placeholder
-  string that fails validation, and rule strings with `|` are split.
-- `probes.payloads.fields` is applied to probe request bodies; it was
-  documented in 0.2.0 but had no effect.
-
-- The IDOR probe no longer confirms a write on another owner's record that did
-  not happen: the record before the request was compared as the factory
-  returned it, so any column the factory left unset looked like a change.
-- The IDOR, mass assignment and missing-authentication probes send writes
-  past the CSRF check, as the attacker has a token of their own. Before, every
-  write to a `web` route answered 419 and was counted as checked and not
-  confirmed. A 419 that still gets through (an unknown CSRF middleware) is
-  reported as skipped.
-- The IDOR and mass assignment probes check routes of the user model itself
-  (`users/{user}`) instead of skipping them with "the factory failed: Undefined
-  array key 0".
-- The probes module no longer fails with "The probe process did not print a JSON
-  object" when the report contains characters such as `ą`: the child
-  process output was split on a byte that is part of their UTF-8 encoding.
 
 - The `models` module no longer crashes the whole scan when a class in `app/`
   cannot be loaded (for example an incompatible method signature, a PHP fatal
@@ -69,6 +53,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   model, typed with it or assigned from it) and points at that call. Before,
   any such call anywhere in `app/` was taken as evidence for every model with
   an empty `$guarded`.
+- Probe request bodies take the value from the rule type, not from modifiers:
+  `['required', 'integer']` or `'nullable|email'` no longer get a placeholder
+  string that fails validation, and rule strings with `|` are split.
+- `probes.payloads.fields` is applied to probe request bodies; it was
+  documented in 0.2.0 but had no effect.
+- The IDOR probe no longer confirms a write on another owner's record that did
+  not happen: the record before the request was compared as the factory
+  returned it, so any column the factory left unset looked like a change.
+- The IDOR, mass assignment and missing-authentication probes send writes
+  past the CSRF check, as the attacker has a token of their own. Before, every
+  write to a `web` route answered 419 and was counted as checked and not
+  confirmed. A 419 that still gets through (an unknown CSRF middleware) is
+  reported as skipped.
+- The IDOR and mass assignment probes check routes of the user model itself
+  (`users/{user}`) instead of skipping them with "the factory failed: Undefined
+  array key 0".
+- The probes module no longer fails with "The probe process did not print a JSON
+  object" when the report contains characters such as `ą`: the child
+  process output was split on a byte that is part of their UTF-8 encoding.
 
 ## [0.2.1] - 2026-10-18
 
@@ -157,7 +160,8 @@ First public release.
 - `unknown` severity for advisories published without one; it always meets the
   `--fail-on` threshold.
 
-[Unreleased]: https://github.com/jklejczyk/security-toolkit-for-laravel/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/jklejczyk/security-toolkit-for-laravel/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/jklejczyk/security-toolkit-for-laravel/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/jklejczyk/security-toolkit-for-laravel/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/jklejczyk/security-toolkit-for-laravel/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jklejczyk/security-toolkit-for-laravel/releases/tag/v0.1.0
