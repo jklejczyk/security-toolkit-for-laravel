@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Jklejczyk\SecurityToolkit\Scanners\Auth\Checks;
 
-use Illuminate\Auth\Middleware\Authenticate;
-use Illuminate\Auth\Middleware\AuthenticateWithBasicAuth;
 use Illuminate\Auth\Middleware\EnsureEmailIsVerified;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Jklejczyk\SecurityToolkit\Core\Checks\Check;
@@ -15,14 +13,14 @@ use Jklejczyk\SecurityToolkit\Core\Findings\Location;
 use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
 use Jklejczyk\SecurityToolkit\Core\Map\RouteInfo;
 use Jklejczyk\SecurityToolkit\Core\ScanContext;
+use Jklejczyk\SecurityToolkit\Scanners\Support\PublicRegistration;
 use ReflectionClass;
 
 final class VerifiedWithoutMustVerifyEmailCheck implements Check
 {
-    /**
-     * Route names of the registration form submit in Breeze, the starter kits, Fortify and Jetstream.
-     */
-    private const REGISTRATION_NAMES = ['register', 'register.store'];
+    public function __construct(
+        private readonly PublicRegistration $registration = new PublicRegistration,
+    ) {}
 
     public function id(): string
     {
@@ -42,7 +40,7 @@ final class VerifiedWithoutMustVerifyEmailCheck implements Check
     public function run(ScanContext $context): iterable
     {
         $verified = array_values(array_filter($context->map->routes(), fn (RouteInfo $route): bool => $route->usesMiddleware(EnsureEmailIsVerified::class)));
-        $registration = $this->publicRegistration($context->map->routes());
+        $registration = $this->registration->route($context->map->routes());
 
         if ($verified === [] || $registration === null) {
             return [];
@@ -69,9 +67,9 @@ final class VerifiedWithoutMustVerifyEmailCheck implements Check
                     '%d %s the verified middleware (for example %s), but %s does not implement MustVerifyEmail, so EnsureEmailIsVerified lets every user through. Registration is public (%s), so anyone can create an account with an address they do not own and reach those routes as if it were confirmed.',
                     count($verified),
                     count($verified) === 1 ? 'route uses' : 'routes use',
-                    $this->describe($verified[0]),
+                    $this->registration->label($verified[0]),
                     $model,
-                    $this->describe($registration),
+                    $this->registration->label($registration),
                 ),
                 'Add "implements MustVerifyEmail" (Illuminate\Contracts\Auth\MustVerifyEmail) to the user model; Illuminate\Foundation\Auth\User already has the methods it needs. If the application does not need confirmed addresses, remove verified from the routes so it does not suggest a check that is not there.',
                 [
@@ -82,36 +80,5 @@ final class VerifiedWithoutMustVerifyEmailCheck implements Check
                 cwe: [304],
             ),
         ];
-    }
-
-    /**
-     * A POST registration route that needs no login.
-     *
-     * @param  list<RouteInfo>  $routes
-     */
-    private function publicRegistration(array $routes): ?RouteInfo
-    {
-        foreach ($routes as $route) {
-            if (! in_array('POST', $route->methods, true)) {
-                continue;
-            }
-
-            if (! in_array($route->name, self::REGISTRATION_NAMES, true) && trim($route->uri, '/') !== 'register') {
-                continue;
-            }
-
-            if (! $route->usesMiddleware(Authenticate::class, AuthenticateWithBasicAuth::class)) {
-                return $route;
-            }
-        }
-
-        return null;
-    }
-
-    private function describe(RouteInfo $route): string
-    {
-        $methods = array_values(array_diff($route->methods, ['HEAD']));
-
-        return sprintf('%s /%s', implode('|', $methods), ltrim($route->uri, '/'));
     }
 }
