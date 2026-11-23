@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   authorization API (`->can()`, `Gate::`, `abort(403)`), or one that receives
   a parameter from the route (`permission:posts.edit`, `area:admin`) and can
   turn the request away with a 401/403, `abort()`, a redirect or an exception.
+- `routes.missing-authentication` no longer reports routes whose action, or a
+  closure middleware registered in the controller constructor, checks the
+  login in a condition (`if (! Auth::check())`, `if (Auth::user())`,
+  `abort_unless(auth()->check(), 401)`, `$request->user()`).
 
 ## [0.2.1] - 2026-10-18
 

@@ -24,6 +24,12 @@ final class ActionSource
     private const AUTHORIZATION = '/(?:\bauthorize\w*\(|\bGate::|->(?:can|cannot|canAny|allows|denies|authorize)\(|\babort_(?:if|unless)\(|\babort\(\s*(?:403|404|Response::HTTP_(?:FORBIDDEN|NOT_FOUND))|AuthorizationException|AccessDeniedHttpException|Response::deny)/';
 
     /**
+     * The login checked in a condition, e.g. if (! Auth::check()), if (Auth::user()) or
+     * abort_unless(auth()->check(), 401); a mention of the user elsewhere is not a check.
+     */
+    private const LOGIN_CHECK = '/\b(?:if|abort_if|abort_unless)\s*\(\s*!?\s*(?:Auth::(?:check|guest|user|id)\(\)|auth\(\)->(?:check|guest|user|id)\(\)|\$request->user\(\)|request\(\)->user\(\))/';
+
+    /**
      * Ways a middleware turns a request away: a 401/403 status, abort(), a redirect or an exception.
      */
     private const DENIAL = '/(?:\b40[13]\b|HTTP_(?:FORBIDDEN|UNAUTHORIZED)|\babort\w*\(|\bredirect\(|\bto_route\(|\bthrow\s+new\b)/';
@@ -65,6 +71,25 @@ final class ActionSource
         }
 
         return $this->constructorAuthorizes($route) || $this->formRequestAuthorizes($route);
+    }
+
+    /**
+     * True when the action, or a closure middleware its controller registers in the constructor,
+     * checks that the user is logged in, so a route without the auth middleware is still protected.
+     */
+    public function checksLogin(RouteInfo $route): bool
+    {
+        $action = $this->action($route);
+
+        if ($action !== null && preg_match(self::LOGIN_CHECK, $action) === 1) {
+            return true;
+        }
+
+        $constructor = $this->constructor($route);
+
+        return $constructor !== null
+            && preg_match('/->middleware\(\s*(?:static\s+)?(?:function|fn)\b/', $constructor) === 1
+            && preg_match(self::LOGIN_CHECK, $constructor) === 1;
     }
 
     /**
@@ -116,19 +141,27 @@ final class ActionSource
      */
     private function constructorAuthorizes(RouteInfo $route): bool
     {
+        $code = $this->constructor($route);
+
+        return $code !== null && str_contains($code, 'authorizeResource(');
+    }
+
+    /**
+     * Code of the controller constructor; null without a controller, a constructor or a readable file.
+     */
+    private function constructor(RouteInfo $route): ?string
+    {
         if ($route->controller === null) {
-            return false;
+            return null;
         }
 
         try {
             $constructor = (new ReflectionClass($route->controller))->getConstructor();
         } catch (Throwable) {
-            return false;
+            return null;
         }
 
-        $code = $constructor === null ? null : $this->body($constructor);
-
-        return $code !== null && str_contains($code, 'authorizeResource(');
+        return $constructor === null ? null : $this->body($constructor);
     }
 
     /**
