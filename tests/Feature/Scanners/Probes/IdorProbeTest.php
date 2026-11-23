@@ -5,11 +5,13 @@ declare(strict_types=1);
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Validator;
 use Jklejczyk\SecurityToolkit\Core\Findings\Confidence;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
 use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
@@ -50,6 +52,14 @@ final class ProbeIdorController
 
     public function update(Invoice $invoice): Response
     {
+        return response()->noContent();
+    }
+
+    public function rewriteChecked(Invoice $invoice, Request $request): Response
+    {
+        Validator::make($request->all(), ['number' => ['required', 'string']])->validate();
+        $invoice->update(['number' => $request->input('number')]);
+
         return response()->noContent();
     }
 
@@ -207,6 +217,28 @@ it('confirms a write of another owner\'s record', function () {
     expect($findings)->toHaveCount(1)
         ->and($findings[0]->confidence)->toBe(Confidence::Confirmed)
         ->and($collector->entry('probes.idor')->confirmed)->toBe(1);
+});
+
+it('confirms a write whose body it learned from the validation errors, and says so', function () {
+    Route::middleware(['auth', SubstituteBindings::class])
+        ->put('api/invoices/{invoice}', [ProbeIdorController::class, 'rewriteChecked']);
+
+    [$context] = idorContext();
+
+    $findings = iterator_to_array((new IdorProbe)->run($context));
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->confidence)->toBe(Confidence::Confirmed)
+        ->and($findings[0]->description)->toContain("request body inferred from the application's validation errors");
+});
+
+it('does not mention inferred bodies when the rules were read', function () {
+    Route::middleware(['auth', SubstituteBindings::class])
+        ->put('api/invoices/{invoice}', [ProbeIdorController::class, 'rewrite']);
+
+    [$context] = idorContext();
+
+    expect(iterator_to_array((new IdorProbe)->run($context))[0]->description)->not->toContain('inferred');
 });
 
 it('does not confirm a write that left the other owner\'s record as it was', function () {

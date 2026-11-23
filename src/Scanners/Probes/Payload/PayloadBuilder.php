@@ -14,6 +14,7 @@ use Illuminate\Validation\Rules\Enum as EnumRule;
 use Jklejczyk\SecurityToolkit\Core\Map\ApplicationMap;
 use Jklejczyk\SecurityToolkit\Core\Map\RouteInfo;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\Data\Actor;
+use Jklejczyk\SecurityToolkit\Scanners\Probes\HttpResponse;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\Ownership\Owner;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\Ownership\OwnershipResolver;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\ProbesConfig;
@@ -39,6 +40,11 @@ final class PayloadBuilder
      */
     private const MODIFIERS = ['required', 'sometimes', 'nullable', 'present', 'filled', 'bail'];
 
+    /**
+     * Rounds of filling the fields the application still rejects, after the first empty request.
+     */
+    private const ROUNDS = 3;
+
     public function __construct(
         private readonly Container $container,
         private readonly ApplicationMap $map,
@@ -48,9 +54,26 @@ final class PayloadBuilder
     ) {}
 
     /**
+     * Rules come from the FormRequest, then from a validate() call in the action, then, with a
+     * validation request, from the errors the application answers on actor A's own record.
+     *
      * @param  class-string<Model>  $model  the model of the last URL parameter
      */
-    public function build(RouteInfo $route, Owner $owner, Actor $actor, string $model): PayloadResult
+    public function build(RouteInfo $route, Owner $owner, Actor $actor, string $model, ?ValidationRequest $probe = null): PayloadResult
+    {
+        $result = $this->fromSource($route, $owner, $actor, $model);
+
+        if ($result->isBuilt() || $probe === null || $result->source === 'config') {
+            return $result;
+        }
+
+        return $this->fromErrors($probe, $this->configuredFields($route, $model), $owner, $actor, $model);
+    }
+
+    /**
+     * @param  class-string<Model>  $model
+     */
+    private function fromSource(RouteInfo $route, Owner $owner, Actor $actor, string $model): PayloadResult
     {
         if ($route->controller === null || $route->action === null) {
             return PayloadResult::skipped('no controller action to read rules from');
@@ -136,6 +159,120 @@ final class PayloadBuilder
         }
 
         return PayloadResult::built($body, $source);
+    }
+
+    /**
+     * Learns the fields from the 422 answers to requests on actor A's record: an empty request first,
+     * then up to three rounds that fill each field still rejected with its next candidate value.
+     * Only the error keys are read; the messages may be translated.
+     *
+     * @param  array<string, mixed>  $configured
+     * @param  class-string<Model>  $model
+     */
+    private function fromErrors(ValidationRequest $probe, array $configured, Owner $owner, Actor $actor, string $model): PayloadResult
+    {
+        $body = [];
+
+        foreach ($configured as $field => $value) {
+            $this->assign($body, $field, $value);
+        }
+
+        $response = $this->ask($probe, $body);
+
+        if ($response->status !== 422) {
+            return $response->isSuccessful() || $response->isRedirect()
+                ? PayloadResult::skipped('the action accepts a request without fields; cannot tell which fields it writes')
+                : PayloadResult::skipped(sprintf('the action answered %d to the validation request', $response->status));
+        }
+
+        $failing = $this->errorFields($response->body);
+
+        if ($failing === []) {
+            return PayloadResult::skipped('the action answered 422 without validation errors to read');
+        }
+
+        $attempt = [];
+
+        for ($round = 0; $round < self::ROUNDS; $round++) {
+            foreach ($failing as $field) {
+                if ($this->ignored($field)) {
+                    continue;
+                }
+
+                $index = $attempt[$field] ?? 0;
+                $attempt[$field] = $index + 1;
+                $value = $this->candidate($field, $index, $owner, $actor, $model);
+
+                if ($value !== null) {
+                    $this->assign($body, $field, $value);
+                }
+            }
+
+            $response = $this->ask($probe, $body);
+
+            if ($response->isSuccessful() || $response->isRedirect()) {
+                return PayloadResult::built($body, 'runtime');
+            }
+
+            if ($response->status !== 422) {
+                return PayloadResult::skipped(sprintf('the action answered %d to the validation request', $response->status));
+            }
+
+            $failing = $this->errorFields($response->body);
+
+            if ($failing === []) {
+                return PayloadResult::skipped('the action answered 422 without validation errors to read');
+            }
+        }
+
+        return PayloadResult::skipped('cannot build a request body from the validation errors: '.implode(', ', $failing));
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $body
+     */
+    private function ask(ValidationRequest $probe, array $body): HttpResponse
+    {
+        return $probe->client->request($probe->method, $probe->uri, $body, $probe->actor, verifyCsrf: false);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function errorFields(string $body): array
+    {
+        $decoded = json_decode($body, true);
+        $errors = is_array($decoded) ? ($decoded['errors'] ?? null) : null;
+
+        return is_array($errors) ? array_values(array_filter(array_map(strval(...), array_keys($errors)), fn (string $field): bool => $field !== '')) : [];
+    }
+
+    /**
+     * The value to try for a rejected field: a guess from its name, then a string, a number and a boolean.
+     *
+     * @param  class-string<Model>  $model
+     */
+    private function candidate(string $field, int $index, Owner $owner, Actor $actor, string $model): mixed
+    {
+        $candidates = [$this->guess($field, $owner, $actor, $model), $this->placeholder(), 1, true];
+
+        return $candidates[$index] ?? null;
+    }
+
+    /**
+     * @param  class-string<Model>  $model
+     */
+    private function guess(string $field, Owner $owner, Actor $actor, string $model): mixed
+    {
+        $pieces = explode('.', str_replace('.*', '', $field));
+        $name = $pieces[count($pieces) - 1];
+
+        return match (true) {
+            in_array($name, ['email', 'url', 'uuid', 'ulid', 'ip', 'timezone'], true) => $this->stringRule($name, $owner, $actor, $model),
+            str_ends_with($name, '_id') => $this->foreignKey($name, $owner, $actor, $model),
+            str_contains($name, 'date') || str_ends_with($name, '_at') => $this->stringRule('date', $owner, $actor, $model),
+            default => null,
+        };
     }
 
     /**

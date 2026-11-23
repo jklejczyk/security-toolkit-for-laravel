@@ -20,6 +20,7 @@ use Jklejczyk\SecurityToolkit\Core\Map\RouteParameter;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\Data\ProbeData;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\Ownership\Owner;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\Ownership\OwnershipResolver;
+use Jklejczyk\SecurityToolkit\Scanners\Probes\Payload\ValidationRequest;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\Probe;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\ProbeContext;
 
@@ -299,7 +300,8 @@ final class IdorProbe implements Probe
         }
 
         $child = $route->models[count($route->models) - 1]->model;
-        $body = $payload->build($route, $owner, $data->a, $child);
+        $own = $this->uri($route, $ownership, $recordA, $recordA);
+        $body = $payload->build($route, $owner, $data->a, $child, $own === null ? null : new ValidationRequest($context->client(), $method, $own, $actor));
 
         if (! $body->isBuilt() || $body->body === null) {
             $context->coverage()->skipped(new CoverageTarget($label, $body->reason ?? 'cannot build a request body', 'set probes.payloads.fields'));
@@ -329,11 +331,12 @@ final class IdorProbe implements Probe
         $context->coverage()->confirmed();
 
         return $this->confirmed($suspicion, $route, $data, $recordB, null, $attack, sprintf(
-            'user A changed %s#%s owned by B through %s (HTTP %d)',
+            'user A changed %s#%s owned by B through %s (HTTP %d)%s',
             class_basename($recordB),
             $this->keyOf($recordB),
             $method,
             $response->status,
+            $body->source === 'runtime' ? ", with a request body inferred from the application's validation errors" : '',
         ));
     }
 

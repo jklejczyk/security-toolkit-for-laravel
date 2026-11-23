@@ -18,6 +18,7 @@ use Jklejczyk\SecurityToolkit\Core\Findings\ReproductionStep;
 use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
 use Jklejczyk\SecurityToolkit\Core\Map\RouteInfo;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\Data\ProbeData;
+use Jklejczyk\SecurityToolkit\Scanners\Probes\Payload\ValidationRequest;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\Probe;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\ProbeContext;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\StaticModels;
@@ -153,7 +154,7 @@ final class MassAssignmentProbe implements Probe
             return null;
         }
 
-        $body = $payload->build($route, $owner, $data->a, $model);
+        $body = $payload->build($route, $owner, $data->a, $model, new ValidationRequest($context->client(), $method, $this->uri($route, $record), $actor));
 
         if (! $body->isBuilt() || $body->body === null) {
             $context->coverage()->skipped(new CoverageTarget($label, $body->reason ?? 'cannot build a request body', 'set probes.payloads.fields'));
