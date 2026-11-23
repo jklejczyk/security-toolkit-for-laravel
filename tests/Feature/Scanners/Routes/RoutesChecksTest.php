@@ -181,10 +181,10 @@ describe('routes.missing-authorization', function () {
         'a denying middleware used without its parameter' => BackOffice::class,
     ]);
 
-    it('says that anyone can become a logged-in user when registration is public', function () {
+    it('says that anyone can become a logged-in user when registration is public', function (string $guard) {
         config(['auth.defaults.guard' => 'web', 'auth.guards.web' => ['driver' => 'session', 'provider' => 'users']]);
         Route::middleware('guest')->post('register', fn () => 'ok')->name('register.store');
-        Route::middleware('auth')->put('posts/{post}', [OpenPostController::class, 'update']);
+        Route::middleware($guard)->put('posts/{post}', [OpenPostController::class, 'update']);
 
         $findings = routeFindings(new MissingAuthorizationCheck);
 
@@ -192,7 +192,7 @@ describe('routes.missing-authorization', function () {
             ->and($findings[0]->description)->toEndWith('Registration is public (POST /register), so anyone can create an account and become such a user.')
             ->and($findings[0]->severity)->toBe(Severity::Medium)
             ->and($findings[0]->confidence)->toBe(Confidence::Suspected);
-    });
+    })->with(['auth', 'auth:sanctum']);
 
     it('says nothing about registration it cannot reach or that does not exist', function (?string $registration, string $guard) {
         config([
