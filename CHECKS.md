@@ -140,10 +140,19 @@ treat as whole-request assignment).
 A probe confirms an attack only when the effect is real, not from the status
 code alone: a record that changed or was deleted, a route that answered with
 the other owner's data, or a series of logins that never hit a limit. Writes
-are confirmed when the column really changed, read back from the database, and
-request bodies are built from the action's `FormRequest::rules()`, so the probe
-sends the route a request it would genuinely accept (never a 422 mistaken for
-"safe"). Routes or models the probe could not check are listed in the "Probe
+are confirmed when the column really changed, read back from the database.
+Request bodies come from the action's `FormRequest::rules()`, then from a
+`validate([...])` call in the action whose rules are plain strings, then from
+`probes.payloads.fields`. When none of these gives a body the action accepts,
+the IDOR and mass assignment probes ask the application: they send requests to
+a record of user A (never to the record under attack) and fill the fields its
+422 answers name, for at most three rounds. A finding confirmed with such a body
+says so. The probe never mistakes a 422 for "safe".
+
+Nested routes such as `clients/{client}/invoices/{invoice}` are probed with a
+parent of user A and a child of user B, also when the parent is not the child's
+owner (the invoice belongs to a company); one such parent per route is
+supported. Routes or models the probe could not check are listed in the "Probe
 coverage" section with the reason.
 
 ## `dependencies`
