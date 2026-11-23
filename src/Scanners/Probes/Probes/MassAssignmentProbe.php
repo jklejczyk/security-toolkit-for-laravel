@@ -170,7 +170,15 @@ final class MassAssignmentProbe implements Probe
                 continue;
             }
 
-            if ($this->changesRecord($context, $route, $method, $body->body, $field, $value, $record, $actor)) {
+            $changed = $this->changesRecord($context, $route, $method, $body->body, $field, $value, $record, $actor);
+
+            if ($changed === null) {
+                $context->coverage()->skipped(new CoverageTarget($label, 'blocked by the CSRF check', 'the route sits behind a CSRF middleware the probe does not recognize'));
+
+                return null;
+            }
+
+            if ($changed) {
                 $context->coverage()->confirmed();
 
                 return $this->finding($context, $route, $model, $data, $record, $method, $field, $attack[$field], $body->body);
@@ -183,19 +191,24 @@ final class MassAssignmentProbe implements Probe
     }
 
     /**
-     * Sends the valid body plus one attack field and reports whether the column really changed.
+     * Sends the valid body plus one attack field and reports whether the column really changed;
+     * null when a CSRF check turned the request away.
      *
      * @param  array<array-key, mixed>  $body
      */
-    private function changesRecord(ProbeContext $context, RouteInfo $route, string $method, array $body, string $field, mixed $value, Model $record, Authenticatable $actor): bool
+    private function changesRecord(ProbeContext $context, RouteInfo $route, string $method, array $body, string $field, mixed $value, Model $record, Authenticatable $actor): ?bool
     {
         $uri = $this->uri($route, $record);
         $before = $this->attribute($record, $field);
 
         try {
-            $response = $context->client()->request($method, $uri, array_merge($body, [$field => $value]), $actor);
+            $response = $context->client()->request($method, $uri, array_merge($body, [$field => $value]), $actor, verifyCsrf: false);
         } catch (Throwable) {
             return false;
+        }
+
+        if ($response->isCsrfRejection()) {
+            return null;
         }
 
         if ($response->isDenied()) {

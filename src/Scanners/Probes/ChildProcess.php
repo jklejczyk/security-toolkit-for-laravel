@@ -46,7 +46,8 @@ final class ChildProcess
 
     private function lastJsonLine(string $output): string
     {
-        $lines = preg_split('/\R/', $output);
+        // Only real line ends: in byte mode \R also matches 0x85, which is inside UTF-8 characters such as "ą".
+        $lines = preg_split('/\r\n|\n|\r/', $output);
 
         if ($lines === false) {
             throw new RuntimeException('the probe process produced no JSON report');

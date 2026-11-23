@@ -84,7 +84,14 @@ final class MissingAuthenticationProbe implements Probe
         }
 
         $uri = $this->uri($route->uri, $record);
-        $response = $context->client()->request($method, $uri);
+        // A guest can fetch a token from any page, so the CSRF check is no defence here.
+        $response = $context->client()->request($method, $uri, verifyCsrf: false);
+
+        if ($response->isCsrfRejection()) {
+            $context->coverage()->skipped(new CoverageTarget($target->label(), 'blocked by the CSRF check', 'the route sits behind a CSRF middleware the probe does not recognize'));
+
+            return null;
+        }
         $deleted = ! $model::query()->whereKey($record->getKey())->exists();
 
         if (! $deleted) {
