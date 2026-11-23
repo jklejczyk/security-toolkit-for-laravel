@@ -148,6 +148,17 @@ final class DataSelector
             return null;
         }
 
+        // The actor as the model's owner sees it: the user for a user-owned model, the group only
+        // when it is the group that owns the model. Anything else would put A's key in the wrong column.
+        $actor = match ($owner->kind) {
+            OwnerKind::User => new Actor($actor->name, $actor->user),
+            OwnerKind::Group => $actor->group instanceof Model && is_a($actor->group, $owner->model) ? $actor : null,
+        };
+
+        if ($actor === null) {
+            return null;
+        }
+
         if ($mode === 'existing') {
             return $this->existingOf($model, $owner, $actor);
         }

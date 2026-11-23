@@ -264,6 +264,13 @@ final class IdorProbe implements Probe
         }
 
         $before = $context->client()->request('GET', $baseline, user: $actor);
+
+        if ($parent !== null && ! $before->isSuccessful()) {
+            $context->coverage()->skipped(new CoverageTarget($label, 'A cannot open its own record through this route', 'set probes.owners'));
+
+            return null;
+        }
+
         $response = $context->client()->request('GET', $attack, user: $actor);
 
         if (! $response->isSuccessful()) {

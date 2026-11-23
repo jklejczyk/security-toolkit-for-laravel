@@ -173,5 +173,6 @@ it('confirms a privileged column on an action whose rules it learned from the va
     $findings = iterator_to_array((new MassAssignmentProbe)->run($context));
 
     expect($findings)->toHaveCount(1)
-        ->and($findings[0]->confidence)->toBe(Confidence::Confirmed);
+        ->and($findings[0]->confidence)->toBe(Confidence::Confirmed)
+        ->and($findings[0]->description)->toContain("request body inferred from the application's validation errors");
 });

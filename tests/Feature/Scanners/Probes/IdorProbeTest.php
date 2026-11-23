@@ -31,6 +31,8 @@ use Jklejczyk\SecurityToolkit\Tests\Fixtures\Ownership\Client;
 use Jklejczyk\SecurityToolkit\Tests\Fixtures\Ownership\Company;
 use Jklejczyk\SecurityToolkit\Tests\Fixtures\Ownership\Invoice;
 use Jklejczyk\SecurityToolkit\Tests\Fixtures\Ownership\InvoicePolicy;
+use Jklejczyk\SecurityToolkit\Tests\Fixtures\Ownership\Memo;
+use Jklejczyk\SecurityToolkit\Tests\Fixtures\Ownership\MemoPolicy;
 use Jklejczyk\SecurityToolkit\Tests\Fixtures\Ownership\Receipt;
 use Jklejczyk\SecurityToolkit\Tests\Fixtures\Ownership\ReceiptPolicy;
 use Jklejczyk\SecurityToolkit\Tests\Fixtures\Ownership\Statement;
@@ -91,6 +93,16 @@ final class ProbeNestedStatementController
         return response()->json($statement);
     }
 
+    public function memo(Client $client, Memo $memo): JsonResponse
+    {
+        return response()->json($memo);
+    }
+
+    public function closed(Client $client, Statement $statement): JsonResponse
+    {
+        abort(403);
+    }
+
     public function orphan(Client $client, Invoice $invoice): JsonResponse
     {
         return response()->json($invoice);
@@ -137,6 +149,14 @@ beforeEach(function () {
         $table->timestamps();
     });
 
+    Schema::create('memos', function (Blueprint $table) {
+        $table->id();
+        $table->string('body');
+        $table->unsignedBigInteger('user_id')->nullable();
+        $table->unsignedBigInteger('client_id')->nullable();
+        $table->timestamps();
+    });
+
     Schema::create('statements', function (Blueprint $table) {
         $table->id();
         $table->string('reference');
@@ -161,6 +181,7 @@ beforeEach(function () {
     Gate::policy(Invoice::class, InvoicePolicy::class);
     Gate::policy(Receipt::class, ReceiptPolicy::class);
     Gate::policy(Statement::class, StatementPolicy::class);
+    Gate::policy(Memo::class, MemoPolicy::class);
 });
 
 function idorContext(?ProbeTarget $target = null, ?CoverageCollector $collector = null): array
@@ -439,6 +460,29 @@ describe('nested routes whose parent is not on the owner path', function () {
 
         expect(iterator_to_array((new IdorProbe)->run($context)))->toBe([])
             ->and($collector->entry('probes.idor')->skipped[0]->reason)->toBe('no Statement of A under its Client');
+    });
+
+    it('skips a parent whose owner is of another kind than the actor', function () {
+        // A memo belongs to a user, its client to a company: the user's id is not a company id.
+        Route::middleware(['auth', SubstituteBindings::class])
+            ->get('api/clients/{client}/memos/{memo}', [ProbeNestedStatementController::class, 'memo']);
+
+        [$context, $collector] = idorContext();
+
+        expect(iterator_to_array((new IdorProbe)->run($context)))->toBe([])
+            ->and($collector->entry('probes.idor')->checked)->toBe(0)
+            ->and($collector->entry('probes.idor')->skipped[0]->reason)->toBe('no Client of A');
+    });
+
+    it('skips when A cannot open its own record through the nested route', function () {
+        Route::middleware(['auth', SubstituteBindings::class])
+            ->get('api/clients/{client}/statements/{statement}', [ProbeNestedStatementController::class, 'closed']);
+
+        [$context, $collector] = idorContext();
+
+        expect(iterator_to_array((new IdorProbe)->run($context)))->toBe([])
+            ->and($collector->entry('probes.idor')->checked)->toBe(0)
+            ->and($collector->entry('probes.idor')->skipped[0]->reason)->toBe('A cannot open its own record through this route');
     });
 
     it('skips more than one parent outside the owner path', function () {
