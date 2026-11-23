@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The `models` module no longer crashes the whole scan when a class in `app/`
+  cannot be loaded (for example an incompatible method signature, a PHP fatal
+  error). It now loads only classes whose source shows a parent chain ending
+  in an Eloquent model.
+
 ## [0.2.1] - 2026-10-18
 
 ### Fixed
