@@ -21,6 +21,11 @@ use Jklejczyk\SecurityToolkit\Tests\Fixtures\Probes\RulesRequest;
 
 final class PayloadProfileController
 {
+    public function plain(Profile $profile): Response
+    {
+        return response()->noContent();
+    }
+
     public function withRules(Profile $profile, RulesRequest $request): Response
     {
         return response()->noContent();
@@ -166,3 +171,42 @@ it('picks a value of the rule type, not of a modifier', function (mixed $rules, 
     'nullable email as a string' => ['nullable|email', 'probe@example.test'],
     'required string as a string' => ['required|string', 'probe'],
 ]);
+
+describe('probes.payloads.fields', function () {
+    beforeEach(function () {
+        RulesRequest::$rules = ['field' => ['required', 'string']];
+    });
+
+    it('overrides a value from the rules with the value configured for the model', function () {
+        config(['security-toolkit.probes.payloads.fields' => [Profile::class => ['field' => 'configured']]]);
+
+        expect(buildPayload('withRules')->body)->toBe(['field' => 'configured']);
+    });
+
+    it('prefers the route over the model', function () {
+        config(['security-toolkit.probes.payloads.fields' => [
+            Profile::class => ['field' => 'model'],
+            'PUT /api/profiles/{profile}' => ['field' => 'route'],
+        ]]);
+
+        expect(buildPayload('withRules')->body)->toBe(['field' => 'route']);
+    });
+
+    it('builds the body from the configuration alone when the action has no rules', function () {
+        config(['security-toolkit.probes.payloads.fields' => [Profile::class => ['bio' => 'configured']]]);
+
+        $result = buildPayload('plain');
+
+        expect($result->body)->toBe(['bio' => 'configured'])
+            ->and($result->source)->toBe('config');
+    });
+
+    it('leaves out ignored fields', function () {
+        config([
+            'security-toolkit.probes.payloads.fields' => [Profile::class => ['field' => 'configured', 'secret' => 'x']],
+            'security-toolkit.probes.payloads.ignore' => ['secret'],
+        ]);
+
+        expect(buildPayload('withRules')->body)->toBe(['field' => 'configured']);
+    });
+});

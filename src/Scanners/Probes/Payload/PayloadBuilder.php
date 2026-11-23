@@ -54,10 +54,13 @@ final class PayloadBuilder
             return PayloadResult::skipped('no controller action to read rules from');
         }
 
+        $configured = $this->configuredFields($route, $model);
         $formRequest = $this->formRequest($route);
 
         if ($formRequest === null) {
-            return PayloadResult::skipped('no FormRequest; cannot build a request body, set probes.payloads.fields');
+            return $configured !== []
+                ? PayloadResult::built($configured, 'config')
+                : PayloadResult::skipped('no FormRequest; cannot build a request body, set probes.payloads.fields');
         }
 
         if (! method_exists($formRequest, 'rules')) {
@@ -74,11 +77,23 @@ final class PayloadBuilder
             return PayloadResult::skipped('the FormRequest has no rules');
         }
 
+        return $this->fromRules($rules, $configured, $owner, $actor, $model, 'form_request');
+    }
+
+    /**
+     * A body that satisfies the rules, with the configured fields taking precedence.
+     *
+     * @param  array<array-key, mixed>  $rules
+     * @param  array<array-key, mixed>  $configured
+     * @param  class-string<Model>  $model
+     */
+    private function fromRules(array $rules, array $configured, Owner $owner, Actor $actor, string $model, string $source): PayloadResult
+    {
         $body = [];
         $failed = null;
 
         foreach ($rules as $field => $fieldRules) {
-            if ($this->ignored((string) $field)) {
+            if ($this->ignored((string) $field) || array_key_exists((string) $field, $configured)) {
                 continue;
             }
 
@@ -97,6 +112,10 @@ final class PayloadBuilder
             $this->assign($body, (string) $field, $value);
         }
 
+        foreach ($configured as $field => $value) {
+            $this->assign($body, (string) $field, $value);
+        }
+
         if ($failed !== null || $body === []) {
             return PayloadResult::skipped($failed ?? 'no fillable rules');
         }
@@ -107,7 +126,41 @@ final class PayloadBuilder
             return PayloadResult::skipped($error);
         }
 
-        return PayloadResult::built($body);
+        return PayloadResult::built($body, $source);
+    }
+
+    /**
+     * Values from probes.payloads.fields: the "METHOD /uri" entry over the model entry, ignored
+     * fields left out.
+     *
+     * @param  class-string<Model>  $model
+     * @return array<string, mixed>
+     */
+    private function configuredFields(RouteInfo $route, string $model): array
+    {
+        $entries = $this->config->payloads['fields'] ?? [];
+
+        if (! is_array($entries)) {
+            return [];
+        }
+
+        $methods = array_values(array_diff($route->methods, ['HEAD']));
+        $routeKey = sprintf('%s /%s', $methods[0] ?? 'GET', ltrim($route->uri, '/'));
+        $fields = [];
+
+        foreach ([$entries[$model] ?? [], $entries[$routeKey] ?? []] as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+
+            foreach ($entry as $field => $value) {
+                if (is_string($field) && ! $this->ignored($field)) {
+                    $fields[$field] = $value;
+                }
+            }
+        }
+
+        return $fields;
     }
 
     /**
