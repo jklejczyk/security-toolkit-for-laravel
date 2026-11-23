@@ -35,10 +35,17 @@ committed config files run everywhere, including CI.
 | `auth.password-too-short` | everywhere | `Password::defaults()` allows fewer than 8 characters | Medium | 521 | — |
 | `auth.password-not-checked-for-leaks` | everywhere | `Password::defaults()` without `uncompromised()` | Medium | 521 | — |
 | `auth.sanctum-tokens-never-expire` | everywhere | Sanctum API tokens never expire | Medium | 613 | — |
+| `auth.verified-without-must-verify-email` | everywhere | Routes use `verified`, but the user model does not implement `MustVerifyEmail`, and anyone can register | Medium | 304 | — |
 
 The password and Sanctum rules report only with evidence that the feature is
 used, for example `Password::defaults()` in validation or `createToken()` in
 `app/`.
+
+`auth.verified-without-must-verify-email` needs public registration as well: a
+`POST` route named `register` or `register.store`, or with the URI `register`,
+that does not require login. The starter kits ship `verified` routes with
+`MustVerifyEmail` commented out, which is harmless while accounts are created
+only by someone trusted.
 
 Outside production the password rules are evaluated as production would see
 them: a `Password::defaults()` callback that checks `app()->isProduction()`,

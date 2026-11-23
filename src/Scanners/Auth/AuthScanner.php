@@ -10,6 +10,7 @@ use Jklejczyk\SecurityToolkit\Scanners\Auth\Checks\PasswordTooShortCheck;
 use Jklejczyk\SecurityToolkit\Scanners\Auth\Checks\SanctumTokensNeverExpireCheck;
 use Jklejczyk\SecurityToolkit\Scanners\Auth\Checks\SessionCookieInsecureCheck;
 use Jklejczyk\SecurityToolkit\Scanners\Auth\Checks\SessionCookieScriptAccessibleCheck;
+use Jklejczyk\SecurityToolkit\Scanners\Auth\Checks\VerifiedWithoutMustVerifyEmailCheck;
 
 final class AuthScanner extends CheckScanner
 {
@@ -28,6 +29,7 @@ final class AuthScanner extends CheckScanner
             new PasswordTooShortCheck($passwords),
             new PasswordNotCheckedForLeaksCheck($passwords),
             new SanctumTokensNeverExpireCheck,
+            new VerifiedWithoutMustVerifyEmailCheck,
         ];
     }
 }
