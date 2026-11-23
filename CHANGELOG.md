@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `MustVerifyEmail`, so the middleware lets every user through, and anyone can
   register an account.
 
+### Changed
+
+- `routes.missing-authorization` says in its description when registration is
+  public and a new account would pass the route's authentication; the severity
+  does not change.
+
 ### Fixed
 
 - The `models` module no longer crashes the whole scan when a class in `app/`

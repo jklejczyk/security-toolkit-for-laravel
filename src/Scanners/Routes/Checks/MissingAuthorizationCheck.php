@@ -16,11 +16,13 @@ use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
 use Jklejczyk\SecurityToolkit\Core\Map\RouteInfo;
 use Jklejczyk\SecurityToolkit\Core\ScanContext;
 use Jklejczyk\SecurityToolkit\Scanners\Routes\ActionSource;
+use Jklejczyk\SecurityToolkit\Scanners\Support\PublicRegistration;
 
 final class MissingAuthorizationCheck implements Check
 {
     public function __construct(
         private readonly ActionSource $source = new ActionSource,
+        private readonly PublicRegistration $registration = new PublicRegistration,
     ) {}
 
     public function id(): string
@@ -42,6 +44,7 @@ final class MissingAuthorizationCheck implements Check
     public function run(ScanContext $context): iterable
     {
         $unreadable = [];
+        $registration = $this->registration->route($context->map->routes());
 
         foreach ($context->map->routes() as $route) {
             if (! $route->inApp || $route->controller === null || $route->models === []) {
@@ -61,7 +64,7 @@ final class MissingAuthorizationCheck implements Check
             }
 
             if (! $authorizes) {
-                yield $this->finding($route, $context);
+                yield $this->finding($route, $context, $registration);
             }
         }
 
@@ -70,7 +73,7 @@ final class MissingAuthorizationCheck implements Check
         }
     }
 
-    private function finding(RouteInfo $route, ScanContext $context): Finding
+    private function finding(RouteInfo $route, ScanContext $context, ?RouteInfo $registration): Finding
     {
         $methods = implode('|', $route->methods);
         $model = $route->models[count($route->models) - 1]->model;
@@ -90,7 +93,7 @@ final class MissingAuthorizationCheck implements Check
                 $policy === null
                     ? sprintf('%s has no policy.', class_basename($model))
                     : sprintf('%s exists but is not used here.', class_basename($policy)),
-            ),
+            ).$this->registrationNote($route, $registration),
             sprintf('Call $this->authorize() with a policy method in the action, or add ->can(\'...\', \'%s\') to the route.', $route->models[count($route->models) - 1]->name),
             [
                 'https://laravel.com/docs/authorization#authorizing-actions-using-policies',
@@ -100,5 +103,17 @@ final class MissingAuthorizationCheck implements Check
             cwe: [639],
             confidence: Confidence::Suspected,
         );
+    }
+
+    /**
+     * With public registration "any logged-in user" means anyone, when an account it creates gets past the route's login.
+     */
+    private function registrationNote(RouteInfo $route, ?RouteInfo $registration): string
+    {
+        if ($registration === null || ! $this->registration->reaches($route)) {
+            return '';
+        }
+
+        return sprintf(' Registration is public (%s), so anyone can create an account and become such a user.', $this->registration->label($registration));
     }
 }
