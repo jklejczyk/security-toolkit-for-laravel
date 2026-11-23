@@ -22,8 +22,8 @@ php artisan security:scan
 
 > **Early release (0.x).** The checks below are tested and stable, but the
 > report format and options may still change before 1.0. More modules
-> (static analysis with Semgrep, SARIF for CI, a full DAST scan, Livewire and
-> Filament) are on the way.
+> (static analysis, SARIF for CI, a full DAST scan, Livewire and Filament) are
+> on the way.
 
 ## Principles
 
