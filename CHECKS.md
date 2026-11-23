@@ -98,7 +98,11 @@ can turn the request away (401/403, `abort()`, a redirect or an exception).
 the action or in a closure middleware of the controller constructor
 (`if (! Auth::check())`, `if (Auth::user())`, `abort_unless(auth()->check(), 401)`). In doubt the
 rule stays silent; authorization in a service or a global scope is not seen,
-which is why these findings are suspected.
+which is why these findings are suspected. When registration is public (a
+`POST` route named `register` or `register.store`, or with the URI `register`,
+without login) and an account it creates would pass the route's
+authentication, `routes.missing-authorization` says so in its description; the
+severity stays the same.
 
 `routes.unscoped-nested-binding` treats a custom key on the child
 (`{invoice:number}`) as scoped, because Laravel scopes it by itself, and skips
