@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Schema;
 use Jklejczyk\SecurityToolkit\Core\Map\ApplicationMap;
@@ -21,6 +22,13 @@ use Jklejczyk\SecurityToolkit\Tests\Fixtures\Probes\RulesRequest;
 
 final class PayloadProfileController
 {
+    public function inline(Request $request, Profile $profile): Response
+    {
+        $profile->update($request->validate(['bio' => ['required', 'string'], 'role' => 'nullable|string|max:20']));
+
+        return response()->noContent();
+    }
+
     public function plain(Profile $profile): Response
     {
         return response()->noContent();
@@ -209,4 +217,11 @@ describe('probes.payloads.fields', function () {
 
         expect(buildPayload('withRules')->body)->toBe(['field' => 'configured']);
     });
+});
+
+it('reads the rules from a validate call in the action', function () {
+    $result = buildPayload('inline');
+
+    expect($result->body)->toBe(['bio' => 'probe', 'role' => 'probe'])
+        ->and($result->source)->toBe('inline');
 });

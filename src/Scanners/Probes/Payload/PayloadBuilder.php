@@ -17,6 +17,7 @@ use Jklejczyk\SecurityToolkit\Scanners\Probes\Data\Actor;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\Ownership\Owner;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\Ownership\OwnershipResolver;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\ProbesConfig;
+use Jklejczyk\SecurityToolkit\Scanners\Routes\ActionSource;
 use ReflectionMethod;
 use ReflectionNamedType;
 use ReflectionProperty;
@@ -43,6 +44,7 @@ final class PayloadBuilder
         private readonly ApplicationMap $map,
         private readonly OwnershipResolver $ownership,
         private readonly ProbesConfig $config,
+        private readonly ActionSource $actions = new ActionSource,
     ) {}
 
     /**
@@ -58,9 +60,16 @@ final class PayloadBuilder
         $formRequest = $this->formRequest($route);
 
         if ($formRequest === null) {
+            $code = $this->actions->action($route);
+            $inline = $code === null ? null : InlineRules::from($code);
+
+            if ($inline !== null && $inline !== []) {
+                return $this->fromRules($inline, $configured, $owner, $actor, $model, 'inline');
+            }
+
             return $configured !== []
                 ? PayloadResult::built($configured, 'config')
-                : PayloadResult::skipped('no FormRequest; cannot build a request body, set probes.payloads.fields');
+                : PayloadResult::skipped('no FormRequest or validate() call with plain rules; cannot build a request body, set probes.payloads.fields');
         }
 
         if (! method_exists($formRequest, 'rules')) {
