@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The IDOR and mass assignment probes check routes of the user model itself
+  (`users/{user}`) instead of skipping them with "the factory failed: Undefined
+  array key 0".
 - The probes module no longer fails with "The probe process did not print a JSON
   object" when the report contains characters such as `ą`: the child
   process output was split on a byte that is part of their UTF-8 encoding.

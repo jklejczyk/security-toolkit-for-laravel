@@ -283,6 +283,11 @@ final class DataSelector
      */
     private function createRecord(string $model, Owner $owner, Actor $actor): Model
     {
+        // The checked model is the user model: the record a user may reach is the user itself.
+        if ($owner->relations === []) {
+            return $actor->user;
+        }
+
         if (count($owner->relations) === 1) {
             return $this->create($model, [$owner->foreignKeys[0] => $actor->ownerId()]);
         }

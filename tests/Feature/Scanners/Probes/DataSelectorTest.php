@@ -133,3 +133,20 @@ it('skips factories when the model has none', function () {
     expect($selection->isFound())->toBeFalse()
         ->and($selection->reason)->toContain('no factory');
 });
+
+it('uses the two users themselves as the records when the checked model is the user model', function (string $mode) {
+    if ($mode === 'existing') {
+        User::query()->create(['name' => 'A', 'email' => 'a@example.com', 'password' => 'x']);
+        User::query()->create(['name' => 'B', 'email' => 'b@example.com', 'password' => 'x']);
+    }
+
+    $selection = select($mode, User::class);
+
+    expect($selection->isFound())->toBeTrue();
+
+    $data = $selection->data;
+
+    expect($data?->recordA?->getKey())->toBe($data?->a->id())
+        ->and($data?->recordB?->getKey())->toBe($data?->b->id())
+        ->and($data?->a->id())->not->toBe($data?->b->id());
+})->with(['factories', 'existing']);
