@@ -26,6 +26,7 @@ use Jklejczyk\SecurityToolkit\Scanners\Probes\Targets\ProbeTargets;
 use Jklejczyk\SecurityToolkit\Tests\Fixtures\Ownership\Profile;
 use Jklejczyk\SecurityToolkit\Tests\Fixtures\Ownership\User;
 use Jklejczyk\SecurityToolkit\Tests\Fixtures\Probes\ProfileRequest;
+use Jklejczyk\SecurityToolkit\Tests\Fixtures\Probes\TokenWall;
 
 final class ProbeProfileController
 {
@@ -140,4 +141,15 @@ it('confirms the static models.guarded-empty finding for the model', function ()
         ->and($findings[0]->ruleId)->toBe('models.guarded-empty')
         ->and($findings[0]->confidence)->toBe(Confidence::Confirmed)
         ->and($findings[0]->location->file)->toBe('app/Models/Profile.php');
+});
+
+it('skips a write that a CSRF check it cannot pass turns away', function () {
+    Route::middleware(['auth', SubstituteBindings::class, TokenWall::class])
+        ->put('api/profiles/{profile}', [ProbeProfileController::class, 'update']);
+
+    [$context, $collector] = massAssignmentContext();
+
+    expect(iterator_to_array((new MassAssignmentProbe)->run($context)))->toBe([])
+        ->and($collector->entry('probes.mass-assignment')->checked)->toBe(0)
+        ->and($collector->entry('probes.mass-assignment')->skipped[0]->reason)->toBe('blocked by the CSRF check');
 });

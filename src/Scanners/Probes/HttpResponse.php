@@ -31,6 +31,14 @@ final readonly class HttpResponse
     }
 
     /**
+     * Turned away by a CSRF token check, so the request says nothing about authorization.
+     */
+    public function isCsrfRejection(): bool
+    {
+        return $this->status === 419;
+    }
+
+    /**
      * A definitive refusal: the probe must not treat it as a confirmation.
      */
     public function isDenied(): bool

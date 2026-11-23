@@ -25,6 +25,7 @@ use Jklejczyk\SecurityToolkit\Scanners\Probes\Targets\ProbeTarget;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\Targets\ProbeTargets;
 use Jklejczyk\SecurityToolkit\Tests\Fixtures\Ownership\Invoice;
 use Jklejczyk\SecurityToolkit\Tests\Fixtures\Ownership\User;
+use Jklejczyk\SecurityToolkit\Tests\Fixtures\Probes\TokenWall;
 
 final class ProbeInvoiceController
 {
@@ -170,4 +171,16 @@ it('skips a route that needs a request body', function () {
     expect($entry->checked)->toBe(0)
         ->and($entry->skipped)->toHaveCount(1)
         ->and($entry->skipped[0]->reason)->toContain('request body');
+});
+
+it('skips a delete that a CSRF check it cannot pass turns away', function () {
+    Route::delete('/api/invoices/{invoice}', [ProbeInvoiceController::class, 'destroy'])
+        ->middleware([SubstituteBindings::class, TokenWall::class]);
+
+    $collector = new CoverageCollector;
+    [$context] = probeContext(['DELETE'], $collector);
+
+    expect(iterator_to_array((new MissingAuthenticationProbe)->run($context)))->toBe([])
+        ->and($collector->entry('probes.missing-authentication')->checked)->toBe(0)
+        ->and($collector->entry('probes.missing-authentication')->skipped[0]->reason)->toBe('blocked by the CSRF check');
 });

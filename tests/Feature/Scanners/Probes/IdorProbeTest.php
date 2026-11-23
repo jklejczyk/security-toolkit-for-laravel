@@ -32,6 +32,7 @@ use Jklejczyk\SecurityToolkit\Tests\Fixtures\Ownership\Receipt;
 use Jklejczyk\SecurityToolkit\Tests\Fixtures\Ownership\ReceiptPolicy;
 use Jklejczyk\SecurityToolkit\Tests\Fixtures\Ownership\User;
 use Jklejczyk\SecurityToolkit\Tests\Fixtures\Probes\InvoiceRequest;
+use Jklejczyk\SecurityToolkit\Tests\Fixtures\Probes\TokenWall;
 
 final class ProbeIdorController
 {
@@ -48,6 +49,11 @@ final class ProbeIdorController
     }
 
     public function update(Invoice $invoice): Response
+    {
+        return response()->noContent();
+    }
+
+    public function ignore(Invoice $invoice, InvoiceRequest $request): Response
     {
         return response()->noContent();
     }
@@ -203,6 +209,17 @@ it('confirms a write of another owner\'s record', function () {
         ->and($collector->entry('probes.idor')->confirmed)->toBe(1);
 });
 
+it('does not confirm a write that left the other owner\'s record as it was', function () {
+    // The factory leaves user_id unset; the database row has it as null, which must not count as a change.
+    Route::middleware(['auth', SubstituteBindings::class])
+        ->put('api/invoices/{invoice}', [ProbeIdorController::class, 'ignore']);
+
+    [$context, $collector] = idorContext();
+
+    expect(iterator_to_array((new IdorProbe)->run($context)))->toBe([])
+        ->and($collector->entry('probes.idor')->checked)->toBe(1);
+});
+
 it('confirms a delete of another owner\'s record', function () {
     Route::middleware(['auth', SubstituteBindings::class])->delete('api/invoices/{invoice}', [ProbeIdorController::class, 'destroy']);
 
@@ -212,6 +229,41 @@ it('confirms a delete of another owner\'s record', function () {
 
     expect($findings)->toHaveCount(1)
         ->and($findings[0]->confidence)->toBe(Confidence::Confirmed);
+});
+
+describe('behind the CSRF check', function () {
+    beforeEach(function () {
+        // Testbench runs as "testing", where Laravel skips the CSRF check; the polygon apps do not.
+        $this->environment = app()->environment();
+        app()->detectEnvironment(fn () => 'local');
+        // The web group encrypts cookies, which needs an application key.
+        config(['app.key' => 'base64:'.base64_encode(str_repeat('k', 32))]);
+    });
+
+    afterEach(function () {
+        app()->detectEnvironment(fn () => $this->environment);
+    });
+
+    it('confirms writes of another owner\'s record on web routes, as user A has a token of their own', function (string $method, string $action) {
+        Route::middleware(['web', 'auth'])->{$method}('invoices/{invoice}', [ProbeIdorController::class, $action]);
+
+        [$context] = idorContext();
+
+        $findings = iterator_to_array((new IdorProbe)->run($context));
+
+        expect($findings)->toHaveCount(1)
+            ->and($findings[0]->confidence)->toBe(Confidence::Confirmed);
+    })->with([['delete', 'destroy'], ['put', 'rewrite']]);
+
+    it('skips a write that a CSRF check it cannot pass turns away, instead of counting it as checked', function () {
+        Route::middleware(['auth', SubstituteBindings::class, TokenWall::class])->delete('api/invoices/{invoice}', [ProbeIdorController::class, 'destroy']);
+
+        [$context, $collector] = idorContext();
+
+        expect(iterator_to_array((new IdorProbe)->run($context)))->toBe([])
+            ->and($collector->entry('probes.idor')->checked)->toBe(0)
+            ->and($collector->entry('probes.idor')->skipped[0]->reason)->toBe('blocked by the CSRF check');
+    });
 });
 
 it('skips a route without a policy', function () {

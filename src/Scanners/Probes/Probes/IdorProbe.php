@@ -240,7 +240,14 @@ final class IdorProbe implements Probe
             return null;
         }
 
-        $response = $context->client()->request($method, $attack, user: $actor);
+        $response = $context->client()->request($method, $attack, user: $actor, verifyCsrf: false);
+
+        if ($response->isCsrfRejection()) {
+            $context->coverage()->skipped(new CoverageTarget($label, 'blocked by the CSRF check', 'the route sits behind a CSRF middleware the probe does not recognize'));
+
+            return null;
+        }
+
         $model = $recordB::class;
         $gone = ! $model::query()->whereKey($recordB->getKey())->exists();
 
@@ -300,8 +307,16 @@ final class IdorProbe implements Probe
             return null;
         }
 
-        $before = $this->fingerprint($recordB);
-        $response = $context->client()->request($method, $attack, $body->body, user: $actor);
+        // Both fingerprints come from the database row: a record fresh from a factory lacks the
+        // columns it did not set, which would look like a change.
+        $before = $this->fingerprint($recordB->refresh());
+        $response = $context->client()->request($method, $attack, $body->body, user: $actor, verifyCsrf: false);
+
+        if ($response->isCsrfRejection()) {
+            $context->coverage()->skipped(new CoverageTarget($label, 'blocked by the CSRF check', 'the route sits behind a CSRF middleware the probe does not recognize'));
+
+            return null;
+        }
 
         $recordB->refresh();
 

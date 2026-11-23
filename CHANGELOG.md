@@ -22,6 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The IDOR probe no longer confirms a write on another owner's record that did
+  not happen: the record before the request was compared as the factory
+  returned it, so any column the factory left unset looked like a change.
+- The IDOR, mass assignment and missing-authentication probes send writes
+  past the CSRF check, as the attacker has a token of their own. Before, every
+  write to a `web` route answered 419 and was counted as checked and not
+  confirmed. A 419 that still gets through (an unknown CSRF middleware) is
+  reported as skipped.
 - The IDOR and mass assignment probes check routes of the user model itself
   (`users/{user}`) instead of skipping them with "the factory failed: Undefined
   array key 0".
