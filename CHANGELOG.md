@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `auth.verified-without-must-verify-email` reports routes protected by the
+  `verified` middleware while the user model does not implement
+  `MustVerifyEmail`, so the middleware lets every user through, and anyone can
+  register an account.
+
 ### Fixed
 
 - The `models` module no longer crashes the whole scan when a class in `app/`

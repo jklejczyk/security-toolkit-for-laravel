@@ -35,10 +35,17 @@ committed config files run everywhere, including CI.
 | `auth.password-too-short` | everywhere | `Password::defaults()` allows fewer than 8 characters | Medium | 521 | — |
 | `auth.password-not-checked-for-leaks` | everywhere | `Password::defaults()` without `uncompromised()` | Medium | 521 | — |
 | `auth.sanctum-tokens-never-expire` | everywhere | Sanctum API tokens never expire | Medium | 613 | — |
+| `auth.verified-without-must-verify-email` | everywhere | Routes use `verified`, but the user model does not implement `MustVerifyEmail`, and anyone can register | Medium | 304 | — |
 
 The password and Sanctum rules report only with evidence that the feature is
 used, for example `Password::defaults()` in validation or `createToken()` in
 `app/`.
+
+`auth.verified-without-must-verify-email` needs public registration as well: a
+`POST` route named `register` or `register.store`, or with the URI `register`,
+that does not require login. The starter kits ship `verified` routes with
+`MustVerifyEmail` commented out, which is harmless while accounts are created
+only by someone trusted.
 
 Outside production the password rules are evaluated as production would see
 them: a `Password::defaults()` callback that checks `app()->isProduction()`,
@@ -61,16 +68,19 @@ production as well.
 | `models.guarded-empty` | everywhere | A model in `app/` has an empty `$guarded` (or `#[Unguarded]`) | Medium | 915 | — |
 
 `models.guarded-empty` reports only with evidence that the whole request is
-mass assigned somewhere in `app/`, such as `Post::create($request->all())` or
-`$model->fill(request()->input())`: with `$request->validated()` an empty
-`$guarded` is safe. Pivot models, which are unguarded by default, are not
+mass assigned to that model in `app/`: a call on the class
+(`Post::create($request->all())`) or on a variable named after the model, typed
+with it or assigned from it (`$post->fill(request()->input())`). With
+`$request->validated()` an empty `$guarded` is safe. A call the model cannot be
+linked to, such as `$this->model->update($request->all())` in a generic
+repository, is not evidence for any model. Pivot models, which are unguarded by default, are not
 reported. When every model is unguarded, only `models.unguarded` is reported.
 
 ## `routes`
 
 | Rule | Runs in | Detects | Severity | CWE | CVSS |
 | --- | --- | --- | --- | --- | --- |
-| `routes.missing-authentication` | everywhere | `POST`, `PUT`, `PATCH` or `DELETE` route with a model parameter and no `auth`, `auth.basic`, `signed` or `can:` middleware (suspected) | High | 306 | — |
+| `routes.missing-authentication` | everywhere | `POST`, `PUT`, `PATCH` or `DELETE` route with a model parameter, no `auth`, `auth.basic`, `signed` or `can:` middleware and no login check in the action (suspected) | High | 306 | — |
 | `routes.missing-authorization` | everywhere | Logged-in route with a model parameter that never authorizes it (suspected) | Medium | 639 | — |
 | `routes.unscoped-nested-binding` | everywhere | Nested model parameters where the child belongs to the parent, without scoped bindings (suspected) | Medium | 639 | — |
 | `routes.csrf-excluded` | everywhere | URI excluded from CSRF that matches a logged-in session route, with `session.same_site` `none` or `null` | Medium | 352 | 6.5 |
@@ -79,8 +89,14 @@ The rules look only at routes whose controller is in `app/`; closures and
 Livewire pages (`Route::livewire()`) are left out. Authorization counts when
 the route has a `can:` middleware, the action calls `authorize()`, `Gate::`,
 `->can()`, `->cannot()`, `abort_if()`, `abort_unless()` or `abort(403)`, the
-controller constructor calls `authorizeResource()`, or a form request of the
-action has an `authorize()` that does more than `return true`. In doubt the
+controller constructor calls `authorizeResource()`, a form request of the
+action has an `authorize()` that does more than `return true`, or a middleware
+in `app/` authorizes: its `handle()` uses one of those calls, or the route
+passes it a parameter (`permission:posts.edit`, `area:admin`) and `handle()`
+can turn the request away (401/403, `abort()`, a redirect or an exception).
+`routes.missing-authentication` also accepts a login check in a condition in
+the action or in a closure middleware of the controller constructor
+(`if (! Auth::check())`, `if (Auth::user())`, `abort_unless(auth()->check(), 401)`). In doubt the
 rule stays silent; authorization in a service or a global scope is not seen,
 which is why these findings are suspected.
 
