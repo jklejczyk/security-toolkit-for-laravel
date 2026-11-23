@@ -33,6 +33,11 @@ final class PayloadBuilder
 {
     private const PLACEHOLDER = 'probe';
 
+    /**
+     * Rules that say whether a field is sent, not what it holds: they never choose the value.
+     */
+    private const MODIFIERS = ['required', 'sometimes', 'nullable', 'present', 'filled', 'bail'];
+
     public function __construct(
         private readonly Container $container,
         private readonly ApplicationMap $map,
@@ -169,7 +174,7 @@ final class PayloadBuilder
                 continue;
             }
 
-            if (is_string($rule)) {
+            if (is_string($rule) && ! in_array($rule, self::MODIFIERS, true)) {
                 $value = $this->stringRule($rule, $owner, $actor, $model);
 
                 if ($value !== null) {
@@ -456,7 +461,7 @@ final class PayloadBuilder
         $stripped = [];
 
         foreach ($rules as $field => $fieldRules) {
-            foreach (is_array($fieldRules) ? $fieldRules : [$fieldRules] as $rule) {
+            foreach ($this->normalise($fieldRules) as $rule) {
                 if (! is_object($rule)) {
                     $stripped[$field][] = $rule;
                 }
@@ -471,12 +476,17 @@ final class PayloadBuilder
      */
     private function normalise(mixed $rules): array
     {
+        // Laravel splits a rule string on "|" as well, so a regex with "|" has to be an array element there too.
+        if (is_string($rules)) {
+            return explode('|', $rules);
+        }
+
         return is_array($rules) ? array_values($rules) : [$rules];
     }
 
     private function required(mixed $rules): bool
     {
-        foreach (is_array($rules) ? $rules : [$rules] as $rule) {
+        foreach ($this->normalise($rules) as $rule) {
             if ($rule === 'required' || $rule === 'present') {
                 return true;
             }
