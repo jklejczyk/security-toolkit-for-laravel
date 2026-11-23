@@ -13,8 +13,8 @@ use ReflectionNamedType;
 use Throwable;
 
 /**
- * The code of a route action and of the places that authorize it: the controller constructor
- * and the authorize() method of form requests the action receives.
+ * The code of a route action and of the places that authorize it: application middleware, the
+ * controller constructor and the authorize() method of form requests the action receives.
  */
 final class ActionSource
 {
@@ -22,6 +22,17 @@ final class ActionSource
      * Calls that authorize a request, e.g. $this->authorize(), Gate::allows() or abort_unless().
      */
     private const AUTHORIZATION = '/(?:\bauthorize\w*\(|\bGate::|->(?:can|cannot|canAny|allows|denies|authorize)\(|\babort_(?:if|unless)\(|\babort\(\s*(?:403|404|Response::HTTP_(?:FORBIDDEN|NOT_FOUND))|AuthorizationException|AccessDeniedHttpException|Response::deny)/';
+
+    /**
+     * The login checked in a condition, e.g. if (! Auth::check()), if (Auth::user()) or
+     * abort_unless(auth()->check(), 401); a mention of the user elsewhere is not a check.
+     */
+    private const LOGIN_CHECK = '/\b(?:if|abort_if|abort_unless)\s*\(\s*!?\s*(?:Auth::(?:check|guest|user|id)\(\)|auth\(\)->(?:check|guest|user|id)\(\)|\$request->user\(\)|request\(\)->user\(\))/';
+
+    /**
+     * Ways a middleware turns a request away: a 401/403 status, abort(), a redirect or an exception.
+     */
+    private const DENIAL = '/(?:\b40[13]\b|HTTP_(?:FORBIDDEN|UNAUTHORIZED)|\babort\w*\(|\bredirect\(|\bto_route\(|\bthrow\s+new\b)/';
 
     /**
      * Code of the action method, without its doc comment; null for a closure or an unreadable file.
@@ -45,6 +56,10 @@ final class ActionSource
      */
     public function authorizes(RouteInfo $route): ?bool
     {
+        if ($this->middlewareAuthorizes($route)) {
+            return true;
+        }
+
         $action = $this->action($route);
 
         if ($action === null) {
@@ -59,24 +74,94 @@ final class ActionSource
     }
 
     /**
+     * True when the action, or a closure middleware its controller registers in the constructor,
+     * checks that the user is logged in, so a route without the auth middleware is still protected.
+     */
+    public function checksLogin(RouteInfo $route): bool
+    {
+        $action = $this->action($route);
+
+        if ($action !== null && preg_match(self::LOGIN_CHECK, $action) === 1) {
+            return true;
+        }
+
+        $constructor = $this->constructor($route);
+
+        return $constructor !== null
+            && preg_match('/->middleware\(\s*(?:static\s+)?(?:function|fn)\b/', $constructor) === 1
+            && preg_match(self::LOGIN_CHECK, $constructor) === 1;
+    }
+
+    /**
+     * An application middleware that authorizes: its handle() uses Laravel's authorization API, or
+     * the route names what to check ("permission:posts.edit", "area:admin") and handle() can turn
+     * the request away. A parameter that never leads to a denial (e.g. a locale) is not authorization.
+     */
+    private function middlewareAuthorizes(RouteInfo $route): bool
+    {
+        foreach ($route->middleware as $middleware) {
+            [$class, $parameters] = array_pad(explode(':', $middleware, 2), 2, '');
+
+            $code = $this->applicationHandle($class);
+
+            if ($code === null) {
+                continue;
+            }
+
+            if (preg_match(self::AUTHORIZATION, $code) === 1 || ($parameters !== '' && preg_match(self::DENIAL, $code) === 1)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Code of handle() of a middleware class declared in app/; null for framework and package middleware.
+     */
+    private function applicationHandle(string $class): ?string
+    {
+        if (! class_exists($class) || ! method_exists($class, 'handle')) {
+            return null;
+        }
+
+        $handle = new ReflectionMethod($class, 'handle');
+        $file = $handle->getFileName();
+
+        if ($file === false || ! str_starts_with($file, app_path().DIRECTORY_SEPARATOR)) {
+            return null;
+        }
+
+        return $this->body($handle);
+    }
+
+    /**
      * authorizeResource() in the constructor, or a "can:" middleware the controller adds itself
      * (the map already includes controller middleware, so only authorizeResource is left).
      */
     private function constructorAuthorizes(RouteInfo $route): bool
     {
+        $code = $this->constructor($route);
+
+        return $code !== null && str_contains($code, 'authorizeResource(');
+    }
+
+    /**
+     * Code of the controller constructor; null without a controller, a constructor or a readable file.
+     */
+    private function constructor(RouteInfo $route): ?string
+    {
         if ($route->controller === null) {
-            return false;
+            return null;
         }
 
         try {
             $constructor = (new ReflectionClass($route->controller))->getConstructor();
         } catch (Throwable) {
-            return false;
+            return null;
         }
 
-        $code = $constructor === null ? null : $this->body($constructor);
-
-        return $code !== null && str_contains($code, 'authorizeResource(');
+        return $constructor === null ? null : $this->body($constructor);
     }
 
     /**

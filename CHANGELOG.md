@@ -14,6 +14,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `MustVerifyEmail`, so the middleware lets every user through, and anyone can
   register an account.
 
+### Fixed
+
+- The `models` module no longer crashes the whole scan when a class in `app/`
+  cannot be loaded (for example an incompatible method signature, a PHP fatal
+  error). It now loads only classes whose source shows a parent chain ending
+  in an Eloquent model.
+- `routes.missing-authorization` no longer reports routes guarded by an
+  application middleware that authorizes: one whose `handle()` uses Laravel's
+  authorization API (`->can()`, `Gate::`, `abort(403)`), or one that receives
+  a parameter from the route (`permission:posts.edit`, `area:admin`) and can
+  turn the request away with a 401/403, `abort()`, a redirect or an exception.
+- `routes.missing-authentication` no longer reports routes whose action, or a
+  closure middleware registered in the controller constructor, checks the
+  login in a condition (`if (! Auth::check())`, `if (Auth::user())`,
+  `abort_unless(auth()->check(), 401)`, `$request->user()`).
+- `models.guarded-empty` reports a model only when the whole request reaches
+  that model (`Post::create($request->all())`, or a variable named after the
+  model, typed with it or assigned from it) and points at that call. Before,
+  any such call anywhere in `app/` was taken as evidence for every model with
+  an empty `$guarded`.
+
 ## [0.2.1] - 2026-10-18
 
 ### Fixed

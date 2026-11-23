@@ -19,9 +19,10 @@ use Throwable;
 final class GuardedEmptyCheck implements Check
 {
     /**
-     * A mass-assignment method receiving the whole request, e.g. User::create($request->all()).
+     * A mass-assignment method receiving the whole request, e.g. User::create($request->all()),
+     * with its receiver: a variable ($post->fill) or a class (Post::create, \\App\\Models\\Post::create).
      */
-    private const WHOLE_REQUEST_ASSIGNED = '/(?:->|::)(?:create|fill|update|make|firstOrCreate|firstOrNew|updateOrCreate)\(\s*(?:\$request->(?:all|input)\(\s*\)|request\(\)->(?:all|input)\(\s*\)|Request::(?:all|input)\(\s*\))/';
+    private const WHOLE_REQUEST_ASSIGNED = '/(?:\$(\w+)->|\\\\?((?:\w+\\\\)*\w+)::)(?:create|fill|update|make|firstOrCreate|firstOrNew|updateOrCreate)\(\s*(?:\$request->(?:all|input)\(\s*\)|request\(\)->(?:all|input)\(\s*\)|Request::(?:all|input)\(\s*\))/';
 
     public function __construct(
         private readonly AppSource $source = new AppSource,
@@ -45,17 +46,24 @@ final class GuardedEmptyCheck implements Check
             return;
         }
 
-        // $guarded = [] is safe with validated input, so a model is reported only with evidence of the whole request reaching one.
-        $evidence = $this->source->matches(self::WHOLE_REQUEST_ASSIGNED)[0] ?? null;
+        // $guarded = [] is safe with validated input, so a model is reported only with evidence of the whole request reaching it.
+        $evidence = $this->source->matches(self::WHOLE_REQUEST_ASSIGNED);
 
-        if ($evidence === null) {
+        if ($evidence === []) {
             return;
         }
 
-        $evidenceAt = sprintf('%s:%d', Location::inApplication($evidence['file'], $context->basePath)->file, substr_count(substr($evidence['code'], 0, $evidence['offset']), "\n") + 1);
         $failures = [];
 
         foreach ($this->models->all() as ['class' => $class, 'file' => $file]) {
+            $reaching = $this->evidenceFor($class, $evidence);
+
+            if ($reaching === null) {
+                continue;
+            }
+
+            $evidenceAt = sprintf('%s:%d', Location::inApplication($reaching['file'], $context->basePath)->file, substr_count(substr($reaching['code'], 0, $reaching['offset']), "\n") + 1);
+
             try {
                 $unguarded = $this->guardedIsEmpty($class);
             } catch (Throwable $exception) {
@@ -72,6 +80,47 @@ final class GuardedEmptyCheck implements Check
         if ($failures !== []) {
             throw CheckSkipped::because(implode('; ', $failures));
         }
+    }
+
+    /**
+     * The first assignment of the whole request whose receiver is the model: the class itself, or a
+     * variable named after it, typed with it or assigned from it. A receiver that cannot be linked to
+     * a model (e.g. $this->model in a generic repository) is not evidence for any of them.
+     *
+     * @param  list<array{file: string, code: string, offset: int}>  $evidence
+     * @return array{file: string, code: string, offset: int}|null
+     */
+    private function evidenceFor(string $class, array $evidence): ?array
+    {
+        $model = class_basename($class);
+        $quoted = preg_quote($model, '/');
+
+        foreach ($evidence as $match) {
+            if (preg_match(self::WHOLE_REQUEST_ASSIGNED, $match['code'], $call, 0, $match['offset']) !== 1) {
+                continue;
+            }
+
+            $variable = $call[1];
+            $receiver = $call[2] ?? '';
+
+            if ($variable === '') {
+                if (class_basename($receiver) === $model) {
+                    return $match;
+                }
+
+                continue;
+            }
+
+            $quotedVariable = preg_quote($variable, '/');
+
+            if (strcasecmp($variable, $model) === 0
+                || preg_match('/\b'.$quoted.'\s+\$'.$quotedVariable.'\b/', $match['code']) === 1
+                || preg_match('/\$'.$quotedVariable.'\s*=\s*(?:new\s+)?\\\\?(?:\w+\\\\)*'.$quoted.'\b/', $match['code']) === 1) {
+                return $match;
+            }
+        }
+
+        return null;
     }
 
     /**

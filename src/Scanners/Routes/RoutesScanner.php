@@ -22,7 +22,7 @@ final class RoutesScanner extends CheckScanner
         $source = new ActionSource;
 
         return [
-            new MissingAuthenticationCheck,
+            new MissingAuthenticationCheck($source),
             new MissingAuthorizationCheck($source),
             new UnscopedNestedBindingCheck($source),
             new CsrfExcludedCheck,
