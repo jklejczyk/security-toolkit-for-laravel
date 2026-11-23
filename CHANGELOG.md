@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   closure middleware registered in the controller constructor, checks the
   login in a condition (`if (! Auth::check())`, `if (Auth::user())`,
   `abort_unless(auth()->check(), 401)`, `$request->user()`).
+- `models.guarded-empty` reports a model only when the whole request reaches
+  that model (`Post::create($request->all())`, or a variable named after the
+  model, typed with it or assigned from it) and points at that call. Before,
+  any such call anywhere in `app/` was taken as evidence for every model with
+  an empty `$guarded`.
 
 ## [0.2.1] - 2026-10-18
 
