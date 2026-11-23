@@ -135,6 +135,90 @@ final class DataSelector
     }
 
     /**
+     * A record of the model that belongs to the actor: created in the factories mode, an existing one
+     * in the existing mode. Null when the model has no owner, no factory or no such record.
+     *
+     * @param  class-string<Model>  $model
+     */
+    public function recordFor(string $model, Actor $actor, string $mode): ?Model
+    {
+        $owner = $this->ownership->for($model)->owner;
+
+        if ($owner === null) {
+            return null;
+        }
+
+        // The actor as the model's owner sees it: the user for a user-owned model, the group only
+        // when it is the group that owns the model. Anything else would put A's key in the wrong column.
+        $actor = match ($owner->kind) {
+            OwnerKind::User => new Actor($actor->name, $actor->user),
+            OwnerKind::Group => $actor->group instanceof Model && is_a($actor->group, $owner->model) ? $actor : null,
+        };
+
+        if ($actor === null) {
+            return null;
+        }
+
+        if ($mode === 'existing') {
+            return $this->existingOf($model, $owner, $actor);
+        }
+
+        if (! $this->hasFactory($model)) {
+            return null;
+        }
+
+        try {
+            return $this->createRecord($model, $owner, $actor);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * A record of the model that belongs to the actor and sits under the parent: created in the
+     * factories mode, an existing one in the existing mode, which never writes.
+     *
+     * @param  class-string<Model>  $model
+     */
+    public function childUnder(string $model, Owner $owner, Actor $actor, string $foreignKey, Model $parent, string $mode): ?Model
+    {
+        if ($mode === 'existing') {
+            return $this->existingOf($model, $owner, $actor, $foreignKey, $parent);
+        }
+
+        try {
+            $child = $this->createRecord($model, $owner, $actor);
+            $child->forceFill([$foreignKey => $parent->getKey()])->save();
+
+            return $child;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * @param  class-string<Model>  $model
+     */
+    private function existingOf(string $model, Owner $owner, Actor $actor, ?string $foreignKey = null, ?Model $parent = null): ?Model
+    {
+        $query = $model::query();
+
+        if ($foreignKey !== null && $parent !== null) {
+            $query->where($foreignKey, $parent->getKey());
+        }
+
+        $ownerId = $actor->ownerId();
+
+        foreach ($query->orderBy($query->getModel()->getKeyName())->limit(max($this->config->candidates, 5) * 20)->get() as $record) {
+            if ($ownerId !== null && (string) $this->ownerIdOf($record, $owner) === (string) $ownerId) {
+                return $record;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @param  class-string<Model>  $model
      */
     private function existing(string $model, Owner $owner): DataSelection

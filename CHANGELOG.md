@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Probe request bodies are built from a `validate([...])` call in the action
+  when its rules are plain strings, and, when no rules give an accepted body,
+  from the fields the application's 422 answers name for a record of user A
+  (at most three rounds). A finding confirmed this way says so.
+- The IDOR probe checks nested routes whose parent is not on the child's owner
+  path, for example `clients/{client}/invoices/{invoice}` with invoices owned
+  by a company.
+
 - `auth.verified-without-must-verify-email` reports routes protected by the
   `verified` middleware while the user model does not implement
   `MustVerifyEmail`, so the middleware lets every user through, and anyone can
@@ -21,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   does not change.
 
 ### Fixed
+
+- Probe request bodies take the value from the rule type, not from modifiers:
+  `['required', 'integer']` or `'nullable|email'` no longer get a placeholder
+  string that fails validation, and rule strings with `|` are split.
+- `probes.payloads.fields` is applied to probe request bodies; it was
+  documented in 0.2.0 but had no effect.
 
 - The IDOR probe no longer confirms a write on another owner's record that did
   not happen: the record before the request was compared as the factory

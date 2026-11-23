@@ -18,6 +18,7 @@ use Jklejczyk\SecurityToolkit\Core\Findings\ReproductionStep;
 use Jklejczyk\SecurityToolkit\Core\Findings\Severity;
 use Jklejczyk\SecurityToolkit\Core\Map\RouteInfo;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\Data\ProbeData;
+use Jklejczyk\SecurityToolkit\Scanners\Probes\Payload\ValidationRequest;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\Probe;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\ProbeContext;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\StaticModels;
@@ -153,7 +154,7 @@ final class MassAssignmentProbe implements Probe
             return null;
         }
 
-        $body = $payload->build($route, $owner, $data->a, $model);
+        $body = $payload->build($route, $owner, $data->a, $model, new ValidationRequest($context->client(), $method, $this->uri($route, $record), $actor));
 
         if (! $body->isBuilt() || $body->body === null) {
             $context->coverage()->skipped(new CoverageTarget($label, $body->reason ?? 'cannot build a request body', 'set probes.payloads.fields'));
@@ -181,7 +182,7 @@ final class MassAssignmentProbe implements Probe
             if ($changed) {
                 $context->coverage()->confirmed();
 
-                return $this->finding($context, $route, $model, $data, $record, $method, $field, $attack[$field], $body->body);
+                return $this->finding($context, $route, $model, $data, $record, $method, $field, $attack[$field], $body->body, $body->source === 'runtime');
             }
         }
 
@@ -224,14 +225,14 @@ final class MassAssignmentProbe implements Probe
      * @param  class-string<Model>  $model
      * @param  array<array-key, mixed>  $body
      */
-    private function finding(ProbeContext $context, RouteInfo $route, string $model, ProbeData $data, Model $record, string $method, string $field, bool $tenant, array $body): Finding
+    private function finding(ProbeContext $context, RouteInfo $route, string $model, ProbeData $data, Model $record, string $method, string $field, bool $tenant, array $body, bool $inferred = false): Finding
     {
         $static = $this->staticFinding($context, $model);
 
         if ($static !== null) {
             return $static->withConfirmation(
                 $this->reproduction($data, $record, $method, $route, $field),
-                sprintf('user A set %s on %s#%s', $field, class_basename($record), $this->keyOf($record)),
+                sprintf('user A set %s on %s#%s%s', $field, class_basename($record), $this->keyOf($record), $inferred ? ", with a request body inferred from the application's validation errors" : ''),
             );
         }
 
@@ -241,7 +242,7 @@ final class MassAssignmentProbe implements Probe
             $this->id(),
             $escalate ? Severity::High : Severity::Medium,
             sprintf('%s /%s accepts mass assignment of %s', implode('|', $route->methods), $route->uri, $field),
-            sprintf('The route %s /%s lets a signed-in user set %s on %s by adding it to the request, even though the validation rules do not mention it, and the column really changed.', implode('|', $route->methods), $route->uri, $field, class_basename($record)),
+            sprintf('The route %s /%s lets a signed-in user set %s on %s by adding it to the request, even though the validation rules do not mention it, and the column really changed.%s', implode('|', $route->methods), $route->uri, $field, class_basename($record), $inferred ? " It was confirmed with a request body inferred from the application's validation errors." : ''),
             'Fill the model through $fillable and pass $request->validated() (or $request->only(...)) to update(), so columns outside the rules never reach the model.',
             [
                 'https://laravel.com/docs/eloquent#mass-assignment',

@@ -14,9 +14,11 @@ use Illuminate\Validation\Rules\Enum as EnumRule;
 use Jklejczyk\SecurityToolkit\Core\Map\ApplicationMap;
 use Jklejczyk\SecurityToolkit\Core\Map\RouteInfo;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\Data\Actor;
+use Jklejczyk\SecurityToolkit\Scanners\Probes\HttpResponse;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\Ownership\Owner;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\Ownership\OwnershipResolver;
 use Jklejczyk\SecurityToolkit\Scanners\Probes\ProbesConfig;
+use Jklejczyk\SecurityToolkit\Scanners\Routes\ActionSource;
 use ReflectionMethod;
 use ReflectionNamedType;
 use ReflectionProperty;
@@ -33,26 +35,64 @@ final class PayloadBuilder
 {
     private const PLACEHOLDER = 'probe';
 
+    /**
+     * Rules that say whether a field is sent, not what it holds: they never choose the value.
+     */
+    private const MODIFIERS = ['required', 'sometimes', 'nullable', 'present', 'filled', 'bail'];
+
+    /**
+     * Rounds of filling the fields the application still rejects, after the first empty request.
+     */
+    private const ROUNDS = 3;
+
     public function __construct(
         private readonly Container $container,
         private readonly ApplicationMap $map,
         private readonly OwnershipResolver $ownership,
         private readonly ProbesConfig $config,
+        private readonly ActionSource $actions = new ActionSource,
     ) {}
 
     /**
+     * Rules come from the FormRequest, then from a validate() call in the action, then, with a
+     * validation request, from the errors the application answers on actor A's own record.
+     *
      * @param  class-string<Model>  $model  the model of the last URL parameter
      */
-    public function build(RouteInfo $route, Owner $owner, Actor $actor, string $model): PayloadResult
+    public function build(RouteInfo $route, Owner $owner, Actor $actor, string $model, ?ValidationRequest $probe = null): PayloadResult
+    {
+        $result = $this->fromSource($route, $owner, $actor, $model);
+
+        if ($result->isBuilt() || $probe === null || $result->source === 'config') {
+            return $result;
+        }
+
+        return $this->fromErrors($probe, $this->configuredFields($route, $model), $owner, $actor, $model);
+    }
+
+    /**
+     * @param  class-string<Model>  $model
+     */
+    private function fromSource(RouteInfo $route, Owner $owner, Actor $actor, string $model): PayloadResult
     {
         if ($route->controller === null || $route->action === null) {
             return PayloadResult::skipped('no controller action to read rules from');
         }
 
+        $configured = $this->configuredFields($route, $model);
         $formRequest = $this->formRequest($route);
 
         if ($formRequest === null) {
-            return PayloadResult::skipped('no FormRequest; cannot build a request body, set probes.payloads.fields');
+            $code = $this->actions->action($route);
+            $inline = $code === null ? null : InlineRules::from($code);
+
+            if ($inline !== null && $inline !== []) {
+                return $this->fromRules($inline, $configured, $owner, $actor, $model, 'inline');
+            }
+
+            return $configured !== []
+                ? PayloadResult::built($configured, 'config')
+                : PayloadResult::skipped('no FormRequest or validate() call with plain rules; cannot build a request body, set probes.payloads.fields');
         }
 
         if (! method_exists($formRequest, 'rules')) {
@@ -69,11 +109,23 @@ final class PayloadBuilder
             return PayloadResult::skipped('the FormRequest has no rules');
         }
 
+        return $this->fromRules($rules, $configured, $owner, $actor, $model, 'form_request');
+    }
+
+    /**
+     * A body that satisfies the rules, with the configured fields taking precedence.
+     *
+     * @param  array<array-key, mixed>  $rules
+     * @param  array<array-key, mixed>  $configured
+     * @param  class-string<Model>  $model
+     */
+    private function fromRules(array $rules, array $configured, Owner $owner, Actor $actor, string $model, string $source): PayloadResult
+    {
         $body = [];
         $failed = null;
 
         foreach ($rules as $field => $fieldRules) {
-            if ($this->ignored((string) $field)) {
+            if ($this->ignored((string) $field) || array_key_exists((string) $field, $configured)) {
                 continue;
             }
 
@@ -92,6 +144,10 @@ final class PayloadBuilder
             $this->assign($body, (string) $field, $value);
         }
 
+        foreach ($configured as $field => $value) {
+            $this->assign($body, (string) $field, $value);
+        }
+
         if ($failed !== null || $body === []) {
             return PayloadResult::skipped($failed ?? 'no fillable rules');
         }
@@ -102,7 +158,155 @@ final class PayloadBuilder
             return PayloadResult::skipped($error);
         }
 
-        return PayloadResult::built($body);
+        return PayloadResult::built($body, $source);
+    }
+
+    /**
+     * Learns the fields from the 422 answers to requests on actor A's record: an empty request first,
+     * then up to three rounds that fill each field still rejected with its next candidate value.
+     * Only the error keys are read; the messages may be translated.
+     *
+     * @param  array<string, mixed>  $configured
+     * @param  class-string<Model>  $model
+     */
+    private function fromErrors(ValidationRequest $probe, array $configured, Owner $owner, Actor $actor, string $model): PayloadResult
+    {
+        $body = [];
+
+        foreach ($configured as $field => $value) {
+            $this->assign($body, $field, $value);
+        }
+
+        $response = $this->ask($probe, $body);
+
+        if ($response->status !== 422) {
+            return $response->isSuccessful() || $response->isRedirect()
+                ? PayloadResult::skipped('the action accepts a request without fields; cannot tell which fields it writes')
+                : PayloadResult::skipped(sprintf('the action answered %d to the validation request', $response->status));
+        }
+
+        $failing = $this->errorFields($response->body);
+
+        if ($failing === []) {
+            return PayloadResult::skipped('the action answered 422 without validation errors to read');
+        }
+
+        $attempt = [];
+
+        for ($round = 0; $round < self::ROUNDS; $round++) {
+            foreach ($failing as $field) {
+                if ($this->ignored($field)) {
+                    continue;
+                }
+
+                $index = $attempt[$field] ?? 0;
+                $attempt[$field] = $index + 1;
+                $value = $this->candidate($field, $index, $owner, $actor, $model);
+
+                if ($value !== null) {
+                    $this->assign($body, $field, $value);
+                }
+            }
+
+            $response = $this->ask($probe, $body);
+
+            if ($response->isSuccessful() || $response->isRedirect()) {
+                return PayloadResult::built($body, 'runtime');
+            }
+
+            if ($response->status !== 422) {
+                return PayloadResult::skipped(sprintf('the action answered %d to the validation request', $response->status));
+            }
+
+            $failing = $this->errorFields($response->body);
+
+            if ($failing === []) {
+                return PayloadResult::skipped('the action answered 422 without validation errors to read');
+            }
+        }
+
+        return PayloadResult::skipped('cannot build a request body from the validation errors: '.implode(', ', $failing));
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $body
+     */
+    private function ask(ValidationRequest $probe, array $body): HttpResponse
+    {
+        return $probe->client->request($probe->method, $probe->uri, $body, $probe->actor, verifyCsrf: false);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function errorFields(string $body): array
+    {
+        $decoded = json_decode($body, true);
+        $errors = is_array($decoded) ? ($decoded['errors'] ?? null) : null;
+
+        return is_array($errors) ? array_values(array_filter(array_map(strval(...), array_keys($errors)), fn (string $field): bool => $field !== '')) : [];
+    }
+
+    /**
+     * The value to try for a rejected field: a guess from its name, then a string, a number and a boolean.
+     *
+     * @param  class-string<Model>  $model
+     */
+    private function candidate(string $field, int $index, Owner $owner, Actor $actor, string $model): mixed
+    {
+        $candidates = [$this->guess($field, $owner, $actor, $model), $this->placeholder(), 1, true];
+
+        return $candidates[$index] ?? null;
+    }
+
+    /**
+     * @param  class-string<Model>  $model
+     */
+    private function guess(string $field, Owner $owner, Actor $actor, string $model): mixed
+    {
+        $pieces = explode('.', str_replace('.*', '', $field));
+        $name = $pieces[count($pieces) - 1];
+
+        return match (true) {
+            in_array($name, ['email', 'url', 'uuid', 'ulid', 'ip', 'timezone'], true) => $this->stringRule($name, $owner, $actor, $model),
+            str_ends_with($name, '_id') => $this->foreignKey($name, $owner, $actor, $model),
+            str_contains($name, 'date') || str_ends_with($name, '_at') => $this->stringRule('date', $owner, $actor, $model),
+            default => null,
+        };
+    }
+
+    /**
+     * Values from probes.payloads.fields: the "METHOD /uri" entry over the model entry, ignored
+     * fields left out.
+     *
+     * @param  class-string<Model>  $model
+     * @return array<string, mixed>
+     */
+    private function configuredFields(RouteInfo $route, string $model): array
+    {
+        $entries = $this->config->payloads['fields'] ?? [];
+
+        if (! is_array($entries)) {
+            return [];
+        }
+
+        $methods = array_values(array_diff($route->methods, ['HEAD']));
+        $routeKey = sprintf('%s /%s', $methods[0] ?? 'GET', ltrim($route->uri, '/'));
+        $fields = [];
+
+        foreach ([$entries[$model] ?? [], $entries[$routeKey] ?? []] as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+
+            foreach ($entry as $field => $value) {
+                if (is_string($field) && ! $this->ignored($field)) {
+                    $fields[$field] = $value;
+                }
+            }
+        }
+
+        return $fields;
     }
 
     /**
@@ -169,7 +373,7 @@ final class PayloadBuilder
                 continue;
             }
 
-            if (is_string($rule)) {
+            if (is_string($rule) && ! in_array($rule, self::MODIFIERS, true)) {
                 $value = $this->stringRule($rule, $owner, $actor, $model);
 
                 if ($value !== null) {
@@ -456,7 +660,7 @@ final class PayloadBuilder
         $stripped = [];
 
         foreach ($rules as $field => $fieldRules) {
-            foreach (is_array($fieldRules) ? $fieldRules : [$fieldRules] as $rule) {
+            foreach ($this->normalise($fieldRules) as $rule) {
                 if (! is_object($rule)) {
                     $stripped[$field][] = $rule;
                 }
@@ -471,12 +675,17 @@ final class PayloadBuilder
      */
     private function normalise(mixed $rules): array
     {
+        // Laravel splits a rule string on "|" as well, so a regex with "|" has to be an array element there too.
+        if (is_string($rules)) {
+            return explode('|', $rules);
+        }
+
         return is_array($rules) ? array_values($rules) : [$rules];
     }
 
     private function required(mixed $rules): bool
     {
-        foreach (is_array($rules) ? $rules : [$rules] as $rule) {
+        foreach ($this->normalise($rules) as $rule) {
             if ($rule === 'required' || $rule === 'present') {
                 return true;
             }

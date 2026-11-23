@@ -17,14 +17,16 @@ final readonly class PayloadResult
     private function __construct(
         public ?array $body,
         public ?string $reason,
+        public ?string $source = null,
     ) {}
 
     /**
      * @param  array<array-key, mixed>  $body
+     * @param  string  $source  where the body came from: form_request, inline, runtime or config
      */
-    public static function built(array $body): self
+    public static function built(array $body, string $source = 'form_request'): self
     {
-        return new self($body, null);
+        return new self($body, null, $source);
     }
 
     public static function skipped(string $reason): self

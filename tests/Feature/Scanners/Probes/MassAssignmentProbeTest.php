@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Validator;
 use Jklejczyk\SecurityToolkit\Core\Findings\Confidence;
 use Jklejczyk\SecurityToolkit\Core\Findings\Finding;
 use Jklejczyk\SecurityToolkit\Core\Findings\Location;
@@ -30,6 +32,14 @@ use Jklejczyk\SecurityToolkit\Tests\Fixtures\Probes\TokenWall;
 
 final class ProbeProfileController
 {
+    public function updateChecked(Profile $profile, Request $request): Response
+    {
+        Validator::make($request->all(), ['bio' => ['required', 'string']])->validate();
+        $profile->update($request->all());
+
+        return response()->noContent();
+    }
+
     public function update(Profile $profile, ProfileRequest $request): Response
     {
         $profile->update($request->all());
@@ -152,4 +162,17 @@ it('skips a write that a CSRF check it cannot pass turns away', function () {
     expect(iterator_to_array((new MassAssignmentProbe)->run($context)))->toBe([])
         ->and($collector->entry('probes.mass-assignment')->checked)->toBe(0)
         ->and($collector->entry('probes.mass-assignment')->skipped[0]->reason)->toBe('blocked by the CSRF check');
+});
+
+it('confirms a privileged column on an action whose rules it learned from the validation errors', function () {
+    Route::middleware(['auth', SubstituteBindings::class])
+        ->put('api/profiles/{profile}', [ProbeProfileController::class, 'updateChecked']);
+
+    [$context] = massAssignmentContext();
+
+    $findings = iterator_to_array((new MassAssignmentProbe)->run($context));
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->confidence)->toBe(Confidence::Confirmed)
+        ->and($findings[0]->description)->toContain("request body inferred from the application's validation errors");
 });
